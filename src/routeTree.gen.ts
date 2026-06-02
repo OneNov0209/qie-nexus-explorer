@@ -9,38 +9,327 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WidgetsRouteImport } from './routes/widgets'
+import { Route as UptimeRouteImport } from './routes/uptime'
+import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as SupplyRouteImport } from './routes/supply'
+import { Route as StatesyncRouteImport } from './routes/statesync'
+import { Route as StakingRouteImport } from './routes/staking'
+import { Route as ParametersRouteImport } from './routes/parameters'
+import { Route as IbcRouteImport } from './routes/ibc'
+import { Route as GovernanceRouteImport } from './routes/governance'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CosmwasmRouteImport } from './routes/cosmwasm'
+import { Route as ConsensusRouteImport } from './routes/consensus'
+import { Route as BlocksRouteImport } from './routes/blocks'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TxHashRouteImport } from './routes/tx.$hash'
+import { Route as BlocksHeightRouteImport } from './routes/blocks.$height'
 
+const WidgetsRoute = WidgetsRouteImport.update({
+  id: '/widgets',
+  path: '/widgets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UptimeRoute = UptimeRouteImport.update({
+  id: '/uptime',
+  path: '/uptime',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TransactionsRoute = TransactionsRouteImport.update({
+  id: '/transactions',
+  path: '/transactions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupplyRoute = SupplyRouteImport.update({
+  id: '/supply',
+  path: '/supply',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatesyncRoute = StatesyncRouteImport.update({
+  id: '/statesync',
+  path: '/statesync',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StakingRoute = StakingRouteImport.update({
+  id: '/staking',
+  path: '/staking',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ParametersRoute = ParametersRouteImport.update({
+  id: '/parameters',
+  path: '/parameters',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IbcRoute = IbcRouteImport.update({
+  id: '/ibc',
+  path: '/ibc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GovernanceRoute = GovernanceRouteImport.update({
+  id: '/governance',
+  path: '/governance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CosmwasmRoute = CosmwasmRouteImport.update({
+  id: '/cosmwasm',
+  path: '/cosmwasm',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsensusRoute = ConsensusRouteImport.update({
+  id: '/consensus',
+  path: '/consensus',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlocksRoute = BlocksRouteImport.update({
+  id: '/blocks',
+  path: '/blocks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TxHashRoute = TxHashRouteImport.update({
+  id: '/tx/$hash',
+  path: '/tx/$hash',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlocksHeightRoute = BlocksHeightRouteImport.update({
+  id: '/$height',
+  path: '/$height',
+  getParentRoute: () => BlocksRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/blocks': typeof BlocksRouteWithChildren
+  '/consensus': typeof ConsensusRoute
+  '/cosmwasm': typeof CosmwasmRoute
+  '/dashboard': typeof DashboardRoute
+  '/governance': typeof GovernanceRoute
+  '/ibc': typeof IbcRoute
+  '/parameters': typeof ParametersRoute
+  '/staking': typeof StakingRoute
+  '/statesync': typeof StatesyncRoute
+  '/supply': typeof SupplyRoute
+  '/transactions': typeof TransactionsRoute
+  '/uptime': typeof UptimeRoute
+  '/widgets': typeof WidgetsRoute
+  '/blocks/$height': typeof BlocksHeightRoute
+  '/tx/$hash': typeof TxHashRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/blocks': typeof BlocksRouteWithChildren
+  '/consensus': typeof ConsensusRoute
+  '/cosmwasm': typeof CosmwasmRoute
+  '/dashboard': typeof DashboardRoute
+  '/governance': typeof GovernanceRoute
+  '/ibc': typeof IbcRoute
+  '/parameters': typeof ParametersRoute
+  '/staking': typeof StakingRoute
+  '/statesync': typeof StatesyncRoute
+  '/supply': typeof SupplyRoute
+  '/transactions': typeof TransactionsRoute
+  '/uptime': typeof UptimeRoute
+  '/widgets': typeof WidgetsRoute
+  '/blocks/$height': typeof BlocksHeightRoute
+  '/tx/$hash': typeof TxHashRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/blocks': typeof BlocksRouteWithChildren
+  '/consensus': typeof ConsensusRoute
+  '/cosmwasm': typeof CosmwasmRoute
+  '/dashboard': typeof DashboardRoute
+  '/governance': typeof GovernanceRoute
+  '/ibc': typeof IbcRoute
+  '/parameters': typeof ParametersRoute
+  '/staking': typeof StakingRoute
+  '/statesync': typeof StatesyncRoute
+  '/supply': typeof SupplyRoute
+  '/transactions': typeof TransactionsRoute
+  '/uptime': typeof UptimeRoute
+  '/widgets': typeof WidgetsRoute
+  '/blocks/$height': typeof BlocksHeightRoute
+  '/tx/$hash': typeof TxHashRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/blocks'
+    | '/consensus'
+    | '/cosmwasm'
+    | '/dashboard'
+    | '/governance'
+    | '/ibc'
+    | '/parameters'
+    | '/staking'
+    | '/statesync'
+    | '/supply'
+    | '/transactions'
+    | '/uptime'
+    | '/widgets'
+    | '/blocks/$height'
+    | '/tx/$hash'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/blocks'
+    | '/consensus'
+    | '/cosmwasm'
+    | '/dashboard'
+    | '/governance'
+    | '/ibc'
+    | '/parameters'
+    | '/staking'
+    | '/statesync'
+    | '/supply'
+    | '/transactions'
+    | '/uptime'
+    | '/widgets'
+    | '/blocks/$height'
+    | '/tx/$hash'
+  id:
+    | '__root__'
+    | '/'
+    | '/blocks'
+    | '/consensus'
+    | '/cosmwasm'
+    | '/dashboard'
+    | '/governance'
+    | '/ibc'
+    | '/parameters'
+    | '/staking'
+    | '/statesync'
+    | '/supply'
+    | '/transactions'
+    | '/uptime'
+    | '/widgets'
+    | '/blocks/$height'
+    | '/tx/$hash'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BlocksRoute: typeof BlocksRouteWithChildren
+  ConsensusRoute: typeof ConsensusRoute
+  CosmwasmRoute: typeof CosmwasmRoute
+  DashboardRoute: typeof DashboardRoute
+  GovernanceRoute: typeof GovernanceRoute
+  IbcRoute: typeof IbcRoute
+  ParametersRoute: typeof ParametersRoute
+  StakingRoute: typeof StakingRoute
+  StatesyncRoute: typeof StatesyncRoute
+  SupplyRoute: typeof SupplyRoute
+  TransactionsRoute: typeof TransactionsRoute
+  UptimeRoute: typeof UptimeRoute
+  WidgetsRoute: typeof WidgetsRoute
+  TxHashRoute: typeof TxHashRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/widgets': {
+      id: '/widgets'
+      path: '/widgets'
+      fullPath: '/widgets'
+      preLoaderRoute: typeof WidgetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/uptime': {
+      id: '/uptime'
+      path: '/uptime'
+      fullPath: '/uptime'
+      preLoaderRoute: typeof UptimeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/transactions': {
+      id: '/transactions'
+      path: '/transactions'
+      fullPath: '/transactions'
+      preLoaderRoute: typeof TransactionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/supply': {
+      id: '/supply'
+      path: '/supply'
+      fullPath: '/supply'
+      preLoaderRoute: typeof SupplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/statesync': {
+      id: '/statesync'
+      path: '/statesync'
+      fullPath: '/statesync'
+      preLoaderRoute: typeof StatesyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/staking': {
+      id: '/staking'
+      path: '/staking'
+      fullPath: '/staking'
+      preLoaderRoute: typeof StakingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/parameters': {
+      id: '/parameters'
+      path: '/parameters'
+      fullPath: '/parameters'
+      preLoaderRoute: typeof ParametersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ibc': {
+      id: '/ibc'
+      path: '/ibc'
+      fullPath: '/ibc'
+      preLoaderRoute: typeof IbcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/governance': {
+      id: '/governance'
+      path: '/governance'
+      fullPath: '/governance'
+      preLoaderRoute: typeof GovernanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cosmwasm': {
+      id: '/cosmwasm'
+      path: '/cosmwasm'
+      fullPath: '/cosmwasm'
+      preLoaderRoute: typeof CosmwasmRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consensus': {
+      id: '/consensus'
+      path: '/consensus'
+      fullPath: '/consensus'
+      preLoaderRoute: typeof ConsensusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blocks': {
+      id: '/blocks'
+      path: '/blocks'
+      fullPath: '/blocks'
+      preLoaderRoute: typeof BlocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +337,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tx/$hash': {
+      id: '/tx/$hash'
+      path: '/tx/$hash'
+      fullPath: '/tx/$hash'
+      preLoaderRoute: typeof TxHashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blocks/$height': {
+      id: '/blocks/$height'
+      path: '/$height'
+      fullPath: '/blocks/$height'
+      preLoaderRoute: typeof BlocksHeightRouteImport
+      parentRoute: typeof BlocksRoute
+    }
   }
 }
 
+interface BlocksRouteChildren {
+  BlocksHeightRoute: typeof BlocksHeightRoute
+}
+
+const BlocksRouteChildren: BlocksRouteChildren = {
+  BlocksHeightRoute: BlocksHeightRoute,
+}
+
+const BlocksRouteWithChildren =
+  BlocksRoute._addFileChildren(BlocksRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BlocksRoute: BlocksRouteWithChildren,
+  ConsensusRoute: ConsensusRoute,
+  CosmwasmRoute: CosmwasmRoute,
+  DashboardRoute: DashboardRoute,
+  GovernanceRoute: GovernanceRoute,
+  IbcRoute: IbcRoute,
+  ParametersRoute: ParametersRoute,
+  StakingRoute: StakingRoute,
+  StatesyncRoute: StatesyncRoute,
+  SupplyRoute: SupplyRoute,
+  TransactionsRoute: TransactionsRoute,
+  UptimeRoute: UptimeRoute,
+  WidgetsRoute: WidgetsRoute,
+  TxHashRoute: TxHashRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
