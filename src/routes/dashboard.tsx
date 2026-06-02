@@ -163,7 +163,7 @@ function DashboardPage() {
                   <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 grid place-items-center text-xs font-mono">#</div>
                   <div>
                     <div className="font-mono text-sm group-hover:text-primary">{Number(b.header.height).toLocaleString()}</div>
-                    <div className="text-[11px] text-muted-foreground">{dayjs(b.header.time).fromNow ? dayjs(b.header.time).format("HH:mm:ss") : ""}</div>
+                    <div className="text-[11px] text-muted-foreground">{dayjs(b.header.time).format("HH:mm:ss")}</div>
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground">{b.num_txs ?? 0} txs</div>
