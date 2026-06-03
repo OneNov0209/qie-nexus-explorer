@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { cosmos, formatQIE } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill, StatCard } from "@/components/ui/primitives";
-import { NETWORK } from "@/data/network";
 import { toast } from "sonner";
 import { useWallet } from "@/lib/wallet";
+import { voteProposal } from "@/lib/wallet-tx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/governance")({
   head: () => ({ meta: [{ title: "Governance — QIE Explorer" }] }),
@@ -19,8 +22,20 @@ const STATUS: Record<string, { label: string; variant: "default" | "success" | "
   PROPOSAL_STATUS_FAILED: { label: "Failed", variant: "danger" },
 };
 
+const OPTIONS = [
+  { id: 1, label: "Yes", variant: "success" as const },
+  { id: 2, label: "Abstain", variant: "default" as const },
+  { id: 3, label: "No", variant: "danger" as const },
+  { id: 4, label: "No With Veto", variant: "warning" as const },
+];
+
 function GovPage() {
   const { cosmos: w } = useWallet();
+  const qc = useQueryClient();
+  const [modal, setModal] = useState<any>(null);
+  const [option, setOption] = useState<1 | 2 | 3 | 4>(1);
+  const [busy, setBusy] = useState(false);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["proposals"], refetchInterval: 60_000, queryFn: () => cosmos.proposals(),
   });
@@ -30,9 +45,23 @@ function GovPage() {
   const props = data?.proposals ?? [];
   const counts = props.reduce((a: any, p: any) => { a[p.status] = (a[p.status] ?? 0) + 1; return a; }, {});
 
-  function vote(prop: any, option: string) {
+  function openVote(p: any) {
     if (!w.address) return toast.error("Connect a Cosmos wallet first");
-    toast.info(`Vote ${option} on #${prop.proposal_id} — sign in wallet`);
+    setModal(p);
+    setOption(1);
+  }
+
+  async function submit() {
+    if (!modal) return;
+    setBusy(true);
+    try {
+      const res = await voteProposal(modal.proposal_id, option);
+      toast.success("Vote submitted", { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
+      setModal(null);
+      qc.invalidateQueries({ queryKey: ["proposals"] });
+    } catch (e: any) {
+      toast.error("Vote failed", { description: e?.message ?? String(e) });
+    } finally { setBusy(false); }
   }
 
   return (
@@ -77,8 +106,7 @@ function GovPage() {
                 </div>
                 {p.status === "PROPOSAL_STATUS_VOTING_PERIOD" && (
                   <div className="flex flex-col gap-1.5 shrink-0">
-                    <button onClick={() => vote(p, "YES")} className="btn-primary rounded-lg px-3 py-1.5 text-xs">Vote</button>
-                    <button onClick={() => vote(p, "NO")} className="glass rounded-lg px-3 py-1.5 text-xs hover:bg-white/10">No</button>
+                    <button onClick={() => openVote(p)} className="btn-primary rounded-lg px-3 py-1.5 text-xs">Vote</button>
                   </div>
                 )}
               </div>
@@ -87,6 +115,36 @@ function GovPage() {
         })}
         {props.length === 0 && <Card><div className="text-sm text-muted-foreground text-center py-8">No proposals yet.</div></Card>}
       </div>
+
+      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
+        <DialogContent className="glass-strong border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle>Vote on #{modal?.proposal_id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div className="text-sm font-medium">{modal?.content?.title ?? modal?.title}</div>
+            <p className="text-xs text-muted-foreground line-clamp-3">{modal?.content?.description ?? modal?.summary}</p>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              {OPTIONS.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setOption(o.id as any)}
+                  className={`rounded-xl px-3 py-3 text-sm font-medium transition border ${option === o.id ? "bg-primary/20 border-primary text-white" : "glass border-transparent hover:bg-white/10"}`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setModal(null)} className="glass rounded-lg px-4 py-2 text-sm hover:bg-white/10">Cancel</button>
+            <button onClick={submit} disabled={busy} className="btn-primary rounded-lg px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+              Submit Vote
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

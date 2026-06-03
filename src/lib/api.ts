@@ -61,4 +61,14 @@ export const cosmos = {
   slashingParams: () => rest.get("/cosmos/slashing/v1beta1/params").then(r => r.data?.params),
   signingInfos: () =>
     rest.get("/cosmos/slashing/v1beta1/signing_infos", { params: { "pagination.limit": 500 } }).then(r => r.data),
+  delegations: (address: string) =>
+    rest.get(`/cosmos/staking/v1beta1/delegations/${address}`).then(r => r.data),
+  unbonding: (address: string) =>
+    rest.get(`/cosmos/staking/v1beta1/delegators/${address}/unbonding_delegations`).then(r => r.data),
+  rewards: (address: string) =>
+    rest.get(`/cosmos/distribution/v1beta1/delegators/${address}/rewards`).then(r => r.data),
+  balance: (address: string) =>
+    rest.get(`/cosmos/bank/v1beta1/balances/${address}`).then(r => r.data),
+  validatorByAddr: (valoper: string) =>
+    rest.get(`/cosmos/staking/v1beta1/validators/${valoper}`).then(r => r.data?.validator),
 };

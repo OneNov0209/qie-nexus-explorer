@@ -79,6 +79,15 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useEffect(() => {
+    // Apply persisted theme on hydration
+    try {
+      const raw = localStorage.getItem("qie-theme");
+      const theme = raw ? JSON.parse(raw)?.state?.theme : "dark";
+      document.documentElement.classList.remove("dark", "light");
+      document.documentElement.classList.add(theme === "light" ? "light" : "dark");
+    } catch { document.documentElement.classList.add("dark"); }
+  }, []);
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen">
