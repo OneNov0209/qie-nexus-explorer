@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos, evmRpc, formatQIE, shorten } from "@/lib/api";
+import { cosmos, evm, evmRpc, formatQIE, hexToNum, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { StatCard, Card, SectionTitle, Loading, Pill } from "@/components/ui/primitives";
 import { Activity, Boxes, Coins, Users, TrendingUp, Layers, Percent, Database, Clock, Wallet } from "lucide-react";
