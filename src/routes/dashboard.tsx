@@ -72,15 +72,15 @@ function DashboardPage() {
   const blocks = recent.data?.blocks ?? [];
   let avgBlockTime: number | null = null;
   if (blocks.length > 1) {
-    const t0 = new Date(blocks[0].header.time).getTime();
-    const tN = new Date(blocks[blocks.length - 1].header.time).getTime();
+    const t0 = hexToNum(blocks[0].timestamp) * 1000;
+    const tN = hexToNum(blocks[blocks.length - 1].timestamp) * 1000;
     avgBlockTime = Math.abs(t0 - tN) / 1000 / (blocks.length - 1);
   }
 
   const chartData = [...blocks].reverse().map((b: any) => ({
-    h: Number(b.header.height),
-    txs: Number(b.num_txs ?? 0),
-    time: dayjs(b.header.time).format("HH:mm:ss"),
+    h: hexToNum(b.number),
+    txs: b.transactions?.length ?? 0,
+    time: dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss"),
   }));
 
   return (
