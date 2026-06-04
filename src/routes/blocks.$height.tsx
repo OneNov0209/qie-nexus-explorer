@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos } from "@/lib/api";
+import { evm, hexToNum, formatWei, shorten } from "@/lib/api";
 import { Card, Loading, ErrorState, Pill } from "@/components/ui/primitives";
 import dayjs from "dayjs";
 import { ArrowLeft } from "lucide-react";
+import { NETWORK } from "@/data/network";
 
 export const Route = createFileRoute("/blocks/$height")({
   head: ({ params }) => ({ meta: [{ title: `Block #${params.height} — QIE Explorer` }] }),
@@ -13,19 +14,17 @@ export const Route = createFileRoute("/blocks/$height")({
 function BlockDetail() {
   const { height } = Route.useParams();
   const { data, isLoading, error } = useQuery({
-    queryKey: ["block", height],
-    queryFn: async () => {
-      const [block, txs] = await Promise.all([
-        cosmos.block(height),
-        cosmos.txsByHeight(Number(height)).catch(() => ({ txs: [], tx_responses: [] })),
-      ]);
-      return { block, txs };
-    },
+    queryKey: ["evm-block", height],
+    queryFn: () => evm.getBlock(Number(height), true),
   });
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState error={error} />;
-  const h = data?.block?.block?.header;
+
+  const b = data;
+  const num = hexToNum(b?.number);
+  const ts = hexToNum(b?.timestamp) * 1000;
+  const txs = b?.transactions ?? [];
 
   return (
     <div className="space-y-6">
@@ -34,29 +33,38 @@ function BlockDetail() {
       </Link>
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-semibold">Block <span className="gradient-text">#{Number(h?.height).toLocaleString()}</span></h1>
+          <h1 className="text-2xl font-semibold">Block <span className="gradient-text">#{num.toLocaleString()}</span></h1>
           <Pill variant="success">Finalized</Pill>
         </div>
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-8 text-sm">
-          <Row label="Time" value={dayjs(h?.time).format("YYYY-MM-DD HH:mm:ss")} />
-          <Row label="Chain ID" value={h?.chain_id} />
-          <Row label="Proposer" value={h?.proposer_address} mono />
-          <Row label="Hash" value={data?.block?.block_id?.hash} mono />
-          <Row label="App hash" value={h?.app_hash} mono />
-          <Row label="Last commit" value={h?.last_commit_hash} mono />
+          <Row label="Time" value={dayjs(ts).format("YYYY-MM-DD HH:mm:ss")} />
+          <Row label="Hash" value={b?.hash} mono />
+          <Row label="Parent hash" value={b?.parentHash} mono />
+          <Row label="Miner" value={b?.miner} mono />
+          <Row label="Gas used / limit" value={`${hexToNum(b?.gasUsed).toLocaleString()} / ${hexToNum(b?.gasLimit).toLocaleString()}`} />
+          <Row label="Size" value={`${hexToNum(b?.size).toLocaleString()} bytes`} />
+          <Row label="Transactions" value={String(txs.length)} />
+          <Row label="Base fee" value={b?.baseFeePerGas ? `${formatWei(b.baseFeePerGas, 9)} ${NETWORK.symbol}` : "—"} />
         </dl>
       </Card>
 
       <Card>
-        <h2 className="font-semibold mb-3">Transactions ({data?.txs?.tx_responses?.length ?? 0})</h2>
+        <h2 className="font-semibold mb-3">Transactions ({txs.length})</h2>
         <div className="space-y-2">
-          {(data?.txs?.tx_responses ?? []).map((t: any) => (
-            <Link key={t.txhash} to="/tx/$hash" params={{ hash: t.txhash }} className="flex justify-between p-3 rounded-xl hover:bg-white/5">
-              <div className="font-mono text-xs text-primary truncate max-w-[60%]">{t.txhash}</div>
-              <div className="text-xs">{t.code === 0 ? <Pill variant="success">Success</Pill> : <Pill variant="danger">Fail</Pill>}</div>
-            </Link>
-          ))}
-          {(data?.txs?.tx_responses ?? []).length === 0 && <div className="text-sm text-muted-foreground">No transactions in this block.</div>}
+          {txs.map((t: any) => {
+            const h = typeof t === "string" ? t : t.hash;
+            return (
+              <Link key={h} to="/tx/$hash" params={{ hash: h }} className="flex justify-between items-center p-3 rounded-xl hover:bg-white/5">
+                <div className="font-mono text-xs text-primary truncate max-w-[55%]">{h}</div>
+                {typeof t !== "string" && (
+                  <div className="text-xs text-muted-foreground font-mono">
+                    {shorten(t.from, 8, 4)} → {t.to ? shorten(t.to, 8, 4) : "contract create"}
+                  </div>
+                )}
+              </Link>
+            );
+          })}
+          {txs.length === 0 && <div className="text-sm text-muted-foreground">No transactions in this block.</div>}
         </div>
       </Card>
     </div>
