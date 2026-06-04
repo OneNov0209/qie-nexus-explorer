@@ -39,15 +39,16 @@ function useStats() {
 
 function useRecentBlocks() {
   return useQuery({
-    queryKey: ["recent-blocks"],
+    queryKey: ["recent-blocks-evm"],
     refetchInterval: 6_000,
     queryFn: async () => {
-      const status = await cosmos.status();
-      const latest = Number(status?.sync_info?.latest_block_height ?? 0);
+      const latest = await evm.blockNumber();
       if (!latest) return { blocks: [] as any[], latest: 0 };
-      const min = Math.max(1, latest - 19);
-      const bc = await cosmos.blockchain(min, latest);
-      return { blocks: bc?.block_metas ?? [], latest };
+      const count = 20;
+      const start = Math.max(0, latest - count + 1);
+      const heights = Array.from({ length: latest - start + 1 }, (_, i) => latest - i);
+      const blocks = await Promise.all(heights.map((h) => evm.getBlock(h, false).catch(() => null)));
+      return { blocks: blocks.filter(Boolean), latest };
     },
   });
 }
