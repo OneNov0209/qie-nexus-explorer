@@ -157,19 +157,22 @@ function DashboardPage() {
         <Card>
           <SectionTitle title="Latest Blocks" action={<Link to="/blocks" className="text-xs text-primary hover:underline">View all →</Link>} />
           <div className="space-y-1.5">
-            {blocks.slice(0, 8).map((b: any) => (
-              <Link key={b.header.height} to="/blocks/$height" params={{ height: b.header.height }}
-                className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition group">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 grid place-items-center text-xs font-mono">#</div>
-                  <div>
-                    <div className="font-mono text-sm group-hover:text-primary">{Number(b.header.height).toLocaleString()}</div>
-                    <div className="text-[11px] text-muted-foreground">{dayjs(b.header.time).format("HH:mm:ss")}</div>
+            {blocks.slice(0, 8).map((b: any) => {
+              const h = hexToNum(b.number);
+              return (
+                <Link key={b.hash} to="/blocks/$height" params={{ height: String(h) }}
+                  className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 grid place-items-center text-xs font-mono">#</div>
+                    <div>
+                      <div className="font-mono text-sm group-hover:text-primary">{h.toLocaleString()}</div>
+                      <div className="text-[11px] text-muted-foreground">{dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss")}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="text-xs text-muted-foreground">{b.num_txs ?? 0} txs</div>
-              </Link>
-            ))}
+                  <div className="text-xs text-muted-foreground">{b.transactions?.length ?? 0} txs</div>
+                </Link>
+              );
+            })}
             {blocks.length === 0 && <div className="text-xs text-muted-foreground p-4">No blocks yet…</div>}
           </div>
         </Card>
