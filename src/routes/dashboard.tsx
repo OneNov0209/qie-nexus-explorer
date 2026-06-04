@@ -57,8 +57,8 @@ function DashboardPage() {
   const { data, isLoading, error } = useStats();
   const recent = useRecentBlocks();
 
-  const height = data?.status?.sync_info?.latest_block_height;
   const evmHeight = data?.evmBlock ? parseInt(data.evmBlock, 16) : 0;
+  const height = data?.status?.sync_info?.latest_block_height ?? evmHeight;
   const validators = data?.vals?.validators ?? [];
   const activeVals = validators.filter((v: any) => v.status === "BOND_STATUS_BONDED").length;
   const bonded = data?.pool?.bonded_tokens ?? "0";
