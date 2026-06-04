@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos, evmRpc, formatQIE, shorten } from "@/lib/api";
+import { cosmos, evm, evmRpc, formatQIE, hexToNum, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { StatCard, Card, SectionTitle, Loading, Pill } from "@/components/ui/primitives";
 import { Activity, Boxes, Coins, Users, TrendingUp, Layers, Percent, Database, Clock, Wallet } from "lucide-react";
@@ -39,15 +39,16 @@ function useStats() {
 
 function useRecentBlocks() {
   return useQuery({
-    queryKey: ["recent-blocks"],
+    queryKey: ["recent-blocks-evm"],
     refetchInterval: 6_000,
     queryFn: async () => {
-      const status = await cosmos.status();
-      const latest = Number(status?.sync_info?.latest_block_height ?? 0);
+      const latest = await evm.blockNumber();
       if (!latest) return { blocks: [] as any[], latest: 0 };
-      const min = Math.max(1, latest - 19);
-      const bc = await cosmos.blockchain(min, latest);
-      return { blocks: bc?.block_metas ?? [], latest };
+      const count = 20;
+      const start = Math.max(0, latest - count + 1);
+      const heights = Array.from({ length: latest - start + 1 }, (_, i) => latest - i);
+      const blocks = await Promise.all(heights.map((h) => evm.getBlock(h, false).catch(() => null)));
+      return { blocks: blocks.filter(Boolean), latest };
     },
   });
 }
@@ -56,8 +57,8 @@ function DashboardPage() {
   const { data, isLoading, error } = useStats();
   const recent = useRecentBlocks();
 
-  const height = data?.status?.sync_info?.latest_block_height;
   const evmHeight = data?.evmBlock ? parseInt(data.evmBlock, 16) : 0;
+  const height = data?.status?.sync_info?.latest_block_height ?? evmHeight;
   const validators = data?.vals?.validators ?? [];
   const activeVals = validators.filter((v: any) => v.status === "BOND_STATUS_BONDED").length;
   const bonded = data?.pool?.bonded_tokens ?? "0";
@@ -71,15 +72,15 @@ function DashboardPage() {
   const blocks = recent.data?.blocks ?? [];
   let avgBlockTime: number | null = null;
   if (blocks.length > 1) {
-    const t0 = new Date(blocks[0].header.time).getTime();
-    const tN = new Date(blocks[blocks.length - 1].header.time).getTime();
+    const t0 = hexToNum(blocks[0].timestamp) * 1000;
+    const tN = hexToNum(blocks[blocks.length - 1].timestamp) * 1000;
     avgBlockTime = Math.abs(t0 - tN) / 1000 / (blocks.length - 1);
   }
 
   const chartData = [...blocks].reverse().map((b: any) => ({
-    h: Number(b.header.height),
-    txs: Number(b.num_txs ?? 0),
-    time: dayjs(b.header.time).format("HH:mm:ss"),
+    h: hexToNum(b.number),
+    txs: b.transactions?.length ?? 0,
+    time: dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss"),
   }));
 
   return (
@@ -156,19 +157,22 @@ function DashboardPage() {
         <Card>
           <SectionTitle title="Latest Blocks" action={<Link to="/blocks" className="text-xs text-primary hover:underline">View all →</Link>} />
           <div className="space-y-1.5">
-            {blocks.slice(0, 8).map((b: any) => (
-              <Link key={b.header.height} to="/blocks/$height" params={{ height: b.header.height }}
-                className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition group">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 grid place-items-center text-xs font-mono">#</div>
-                  <div>
-                    <div className="font-mono text-sm group-hover:text-primary">{Number(b.header.height).toLocaleString()}</div>
-                    <div className="text-[11px] text-muted-foreground">{dayjs(b.header.time).format("HH:mm:ss")}</div>
+            {blocks.slice(0, 8).map((b: any) => {
+              const h = hexToNum(b.number);
+              return (
+                <Link key={b.hash} to="/blocks/$height" params={{ height: String(h) }}
+                  className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 grid place-items-center text-xs font-mono">#</div>
+                    <div>
+                      <div className="font-mono text-sm group-hover:text-primary">{h.toLocaleString()}</div>
+                      <div className="text-[11px] text-muted-foreground">{dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss")}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="text-xs text-muted-foreground">{b.num_txs ?? 0} txs</div>
-              </Link>
-            ))}
+                  <div className="text-xs text-muted-foreground">{b.transactions?.length ?? 0} txs</div>
+                </Link>
+              );
+            })}
             {blocks.length === 0 && <div className="text-xs text-muted-foreground p-4">No blocks yet…</div>}
           </div>
         </Card>

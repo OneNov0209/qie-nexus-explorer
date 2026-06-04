@@ -12,6 +12,29 @@ export const evmRpc = async <T = any>(method: string, params: any[] = []): Promi
   return data.result as T;
 };
 
+// --- EVM helpers ---
+export const evm = {
+  blockNumber: async () => parseInt(await evmRpc<string>("eth_blockNumber"), 16),
+  getBlock: (numOrHash: number | string, full = false) => {
+    const tag = typeof numOrHash === "number"
+      ? "0x" + numOrHash.toString(16)
+      : numOrHash;
+    const method = typeof numOrHash === "string" && numOrHash.startsWith("0x") && numOrHash.length === 66
+      ? "eth_getBlockByHash"
+      : "eth_getBlockByNumber";
+    return evmRpc<any>(method, [tag, full]);
+  },
+  getTx: (hash: string) => evmRpc<any>("eth_getTransactionByHash", [hash]),
+  getReceipt: (hash: string) => evmRpc<any>("eth_getTransactionReceipt", [hash]),
+};
+
+export const hexToNum = (h?: string) => (h ? parseInt(h, 16) : 0);
+export const formatWei = (hex?: string, decimals = 6) => {
+  if (!hex) return "0";
+  const v = Number(BigInt(hex)) / 1e18;
+  return v.toLocaleString(undefined, { maximumFractionDigits: decimals });
+};
+
 // Format aqie -> QIE
 export const formatQIE = (amount: string | number | undefined, decimals = 4) => {
   if (amount === undefined || amount === null) return "0";
