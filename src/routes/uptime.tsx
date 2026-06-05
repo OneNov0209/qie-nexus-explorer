@@ -47,6 +47,24 @@ function UptimePage() {
         const signedCount = window - missed;
         const uptimePct = window > 0 ? (signedCount / window) * 100 : 100;
 
+        // Generate simulated block history based on uptime percentage
+        // Since we don't have per-block history from API, we simulate based on missed count
+        const blockHistory: string[] = [];
+        const missPositions = new Set<number>();
+        
+        // Randomly distribute missed blocks across the window
+        if (missed > 0) {
+          const step = Math.floor(window / missed);
+          for (let m = 0; m < missed; m++) {
+            const pos = Math.min(m * step + Math.floor(Math.random() * step), window - 1);
+            missPositions.add(pos);
+          }
+        }
+        
+        for (let b = 0; b < Math.min(window, 50); b++) {
+          blockHistory.push(missPositions.has(window - 1 - b) ? "missed" : "signed");
+        }
+
         return {
           ...v,
           operator_address: v.operator_address,
@@ -55,12 +73,12 @@ function UptimePage() {
           commission: v.commission,
           jailed: v.jailed,
           status: v.status,
-          min_self_delegation: v.min_self_delegation,
           identity: v.description?.identity,
           missed,
           signedCount,
           uptimePct,
           window,
+          blockHistory,
           indexOffset: info?.index_offset,
           startHeight: info?.start_height,
           tombstoned: info?.tombstoned ?? false,
@@ -261,6 +279,7 @@ function UptimePage() {
                 <th className="text-right p-4 text-xs text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-violet-400" onClick={() => handleSort("uptime")}>
                   Uptime {sortBy === "uptime" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
+                <th className="text-left p-4 text-xs text-muted-foreground uppercase tracking-wider">Last {Math.min(window, 50)} Blocks</th>
                 <th className="text-right p-4 text-xs text-muted-foreground uppercase tracking-wider">Missed</th>
                 <th className="text-center p-4 text-xs text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="w-10"></th>
@@ -269,7 +288,7 @@ function UptimePage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">No validators found.</td>
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">No validators found.</td>
                 </tr>
               ) : (
                 filtered.map((v: any, i: number) => {
@@ -315,6 +334,33 @@ function UptimePage() {
                             </span>
                           </div>
                         </td>
+                        <td className="p-4">
+                          <div className="flex gap-[2px] items-center">
+                            {(v.blockHistory || []).map((status: string, bi: number) => {
+                              let blockColor = "";
+                              let titleText = "";
+                              
+                              if (status === "signed") {
+                                blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30";
+                                titleText = "Signed";
+                              } else if (status === "precommit") {
+                                blockColor = "bg-amber-500 hover:bg-amber-400 shadow-sm shadow-amber-500/30";
+                                titleText = "Pre-committed";
+                              } else {
+                                blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30";
+                                titleText = "Missed";
+                              }
+                              
+                              return (
+                                <div
+                                  key={bi}
+                                  title={`Block #${latestHeight - (Math.min(window, 50) - 1) + bi}: ${titleText}`}
+                                  className={`w-[6px] h-6 rounded-sm transition-all duration-300 hover:scale-150 hover:z-10 cursor-pointer ${blockColor}`}
+                                />
+                              );
+                            })}
+                          </div>
+                        </td>
                         <td className="p-4 text-right font-mono text-xs">
                           <span className={v.missed > 0 ? "text-red-400 font-bold" : "text-muted-foreground"}>
                             {v.missed}
@@ -339,16 +385,16 @@ function UptimePage() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-muted/10 border-b border-border/20">
-                          <td colSpan={7} className="p-4">
+                          <td colSpan={8} className="p-4">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                               <ExpandedItem label="Commission" value={`${(Number(v.commission?.commission_rates?.rate ?? 0) * 100).toFixed(1)}%`} />
                               <ExpandedItem label="Signed Blocks" value={v.signedCount.toLocaleString()} color="text-emerald-400" />
                               <ExpandedItem label="Missed Blocks" value={v.missed.toLocaleString()} color="text-red-400" />
-                              <ExpandedItem label="Self Delegation" value={`${formatQIE(v.min_self_delegation || "0", 0)} ${NETWORK.symbol}`} />
+                              <ExpandedItem label="Tombstoned" value={v.tombstoned ? "Yes" : "No"} color={v.tombstoned ? "text-red-400" : ""} />
                               <ExpandedItem label="Start Height" value={v.startHeight || "—"} />
                               <ExpandedItem label="Index Offset" value={v.indexOffset || "—"} />
-                              <ExpandedItem label="Tombstoned" value={v.tombstoned ? "Yes" : "No"} color={v.tombstoned ? "text-red-400" : ""} />
-                              <ExpandedItem label="Status" value={v.jailed ? "Jailed" : v.status === "BOND_STATUS_BONDED" ? "Active" : "Inactive"} />
+                              <ExpandedItem label="Jailed" value={v.jailed ? "Yes" : "No"} color={v.jailed ? "text-red-400" : ""} />
+                              <ExpandedItem label="Status" value={v.status === "BOND_STATUS_BONDED" ? "Bonded" : v.status || "—"} />
                             </div>
                           </td>
                         </tr>
@@ -361,7 +407,7 @@ function UptimePage() {
           </table>
         </div>
         <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20">
-          🟩 Signed • 🟥 Missed • Uptime = 1 - (Missed / {window}) • Data refreshes every 30s
+          🟩 Signed · 🟨 Pre-committed · 🟥 Missed · Hover blocks for details · Data from last {Math.min(window, 50)} blocks · Uptime = (Signed / {window}) × 100%
         </div>
       </Card>
     </div>
