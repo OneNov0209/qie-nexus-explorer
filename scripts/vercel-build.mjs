@@ -6,7 +6,6 @@ const projectRoot = process.cwd();
 const distDir = join(projectRoot, "dist");
 const outputDir = join(projectRoot, ".vercel/output");
 
-// Ensure output directories exist
 const serverOut = join(outputDir, "server");
 const clientOut = join(outputDir, "client");
 
@@ -16,70 +15,48 @@ cpSync(join(distDir, "server"), serverOut, { recursive: true, force: true });
 console.log("[vercel-build] Copying dist/client → .vercel/output/client ...");
 cpSync(join(distDir, "client"), clientOut, { recursive: true, force: true });
 
-// Update nitro.json paths
+// Update nitro.json
 const nitroJsonPath = join(outputDir, "nitro.json");
 if (existsSync(nitroJsonPath)) {
   const nitro = JSON.parse(readFileSync(nitroJsonPath, "utf-8"));
-  nitro.serverEntry = "../../server/index.mjs";
-  nitro.publicDir = "../../client";
   writeFileSync(nitroJsonPath, JSON.stringify(nitro, null, 2));
 }
 
-// Create functions directory
+// Create functions/__server.func with everything needed
 const functionsDir = join(outputDir, "functions");
 const serverFuncDir = join(functionsDir, "__server.func");
 if (!existsSync(serverFuncDir)) {
   mkdirSync(serverFuncDir, { recursive: true });
 }
 
-// Copy server into the function folder so it's available at runtime
-console.log("[vercel-build] Copying .vercel/output/server → functions/__server.func/server ...");
+// Copy server and client into function folder
 cpSync(serverOut, join(serverFuncDir, "server"), { recursive: true, force: true });
-
-// Copy client into the function folder
-console.log("[vercel-build] Copying .vercel/output/client → functions/__server.func/client ...");
 cpSync(clientOut, join(serverFuncDir, "client"), { recursive: true, force: true });
 
-// Create .vc-config.json for the server function
-const vcConfigPath = join(serverFuncDir, ".vc-config.json");
-writeFileSync(vcConfigPath, JSON.stringify({
+// Copy nitro.json
+cpSync(nitroJsonPath, join(serverFuncDir, "nitro.json"), { force: true });
+
+// .vc-config.json
+writeFileSync(join(serverFuncDir, ".vc-config.json"), JSON.stringify({
   handler: "index.mjs",
   launcherType: "Nodejs",
-  shouldAddHelpers: false,
+  shouldAddHelpers: true,
   supportsResponseStreaming: true,
   runtime: "nodejs24.x"
 }, null, 2));
 
-// Create the server function entry point
-const serverFuncEntry = join(serverFuncDir, "index.mjs");
-writeFileSync(serverFuncEntry, `
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const handler = await import(join(__dirname, 'server/index.mjs'));
-export default handler.default || handler;
+// index.mjs - simple import
+writeFileSync(join(serverFuncDir, "index.mjs"), `
+import handler from './server/index.mjs';
+export default handler;
 `);
 
-// Create config.json for Vercel routing
-const configPath = join(outputDir, "config.json");
-writeFileSync(configPath, JSON.stringify({
+// config.json - simple route all to __server
+writeFileSync(join(outputDir, "config.json"), JSON.stringify({
   version: 3,
   routes: [
-    {
-      src: "/assets/(.*)",
-      dest: "/__server/assets/$1"
-    },
-    {
-      src: "/favicon\\.(.*)",
-      dest: "/__server/favicon.$1"
-    },
-    {
-      src: "/(.*)",
-      dest: "/__server"
-    }
+    { src: "/(.*)", dest: "/__server" }
   ]
 }, null, 2));
 
-console.log("[vercel-build] Vercel output configured successfully.");
-console.log("[vercel-build] Deploy with:  npx vercel deploy --prebuilt");
+console.log("[vercel-build] Done.");
