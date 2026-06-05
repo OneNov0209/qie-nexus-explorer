@@ -3,11 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
-  Activity, Users, Radio, Zap, Clock, Server,
+  Activity, Radio, Zap, Clock, Server,
   Wifi, TrendingUp, BarChart3, PieChart, Circle,
-  RefreshCw, Network, Award, ChevronRight
+  RefreshCw, Network, Award
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart as RePieChart,
@@ -31,35 +31,37 @@ const STEP_INFO: Record<string, { name: string; icon: any; color: string }> = {
 const COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#3B82F6", "#EC4899", "#14B8A6", "#F97316"];
 
 function ConsensusPage() {
-  const [voteHistory, setVoteHistory] = useState<{ time: string; voted: number; total: number }[]>([]);
+  const voteHistoryRef = useRef<{ time: string; voted: number; total: number }[]>([]);
+  const [voteChartData, setVoteChartData] = useState<{ time: string; voted: number; missed: number }[]>([]);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["consensus"],
     refetchInterval: 3000,
     queryFn: async () => {
-      const [status, net, cs, vals, dumpRes] = await Promise.all([
+      const [status, cs, vals] = await Promise.all([
         cosmos.status().catch(() => null),
-        cosmos.netInfo().catch(() => null),
         cosmos.consensusState().catch(() => null),
         cosmos.validators().catch(() => ({ validators: [] })),
-        // Use proxy to avoid CORS
-        fetch(`/api/rpc/dump_consensus_state`).then(r => r.json()).catch(() => null),
       ]);
+
+      // Try dump_consensus_state via proxy
+      let dumpData = null;
+      try {
+        const dumpRes = await fetch(`/api/rpc/dump_consensus_state`).then(r => r.json());
+        dumpData = dumpRes?.result?.round_state;
+      } catch {}
 
       const roundState = cs?.round_state ?? {};
       const [height, round, step] = String(roundState["height/round/step"] ?? "").split("/");
 
       return {
-        status,
-        net,
         cs,
         roundState,
         height: height || "—",
         round: round || "—",
         step: step || "0",
-        dumpData: dumpRes?.result?.round_state,
+        dumpData,
         validators: vals?.validators ?? [],
-        syncInfo: status?.sync_info,
         nodeInfo: status?.node_info,
       };
     },
@@ -94,6 +96,9 @@ function ConsensusPage() {
   const activePrecommits = precommits.filter((v: string) => v?.toLowerCase() !== "nil-vote").length;
   const totalValidators = dumpValidators.length || prevotes.length || 1;
 
+  const onboardRate = totalValidators > 0 ? Math.round((activePrevotes / totalValidators) * 100) : 0;
+
+  // Validator map
   const validatorMap = useMemo(() => {
     const map = new Map<string, string>();
     (data?.validators || []).forEach((v: any) => {
@@ -104,34 +109,7 @@ function ConsensusPage() {
     return map;
   }, [data?.validators]);
 
-  // Calculate onboard rate
-  const onboardRate = useMemo(() => {
-    if (totalValidators <= 0) return 0;
-    return Math.round((activePrevotes / totalValidators) * 100);
-  }, [activePrevotes, totalValidators]);
-
-  // Vote history - useEffect for side effect
-  useEffect(() => {
-    if (totalValidators > 0) {
-      const timeStr = new Date().toLocaleTimeString();
-      setVoteHistory(prev => {
-        const last = prev[prev.length - 1];
-        if (last && last.voted === activePrevotes && last.total === totalValidators) {
-          return prev;
-        }
-        const newHistory = [...prev, { time: timeStr, voted: activePrevotes, total: totalValidators }];
-        if (newHistory.length > 20) newHistory.shift();
-        return newHistory;
-      });
-    }
-  }, [activePrevotes, totalValidators]);
-
-  const voteChartData = useMemo(() => voteHistory.map(h => ({
-    time: h.time,
-    voted: h.voted,
-    missed: h.total - h.voted,
-  })), [voteHistory]);
-
+  // Voting power data
   const votingPowerData = useMemo(() => {
     if (!dumpValidators.length) return [];
     const top = dumpValidators.slice(0, 10).map((v: any) => ({
@@ -142,6 +120,25 @@ function ConsensusPage() {
     if (otherPower > 0) top.push({ name: "Others", power: otherPower });
     return top;
   }, [dumpValidators, validatorMap]);
+
+  // Update vote history via ref (no re-render trigger)
+  useEffect(() => {
+    if (totalValidators <= 0) return;
+    const timeStr = new Date().toLocaleTimeString();
+    const history = voteHistoryRef.current;
+    const last = history[history.length - 1];
+    if (last && last.voted === activePrevotes && last.total === totalValidators) return;
+
+    history.push({ time: timeStr, voted: activePrevotes, total: totalValidators });
+    if (history.length > 20) history.shift();
+
+    // Update chart data (this triggers ONE re-render)
+    setVoteChartData(history.map(h => ({
+      time: h.time,
+      voted: h.voted,
+      missed: h.total - h.voted,
+    })));
+  }, [activePrevotes, totalValidators]);
 
   const stepDistribution = useMemo(() => [
     { name: "Prevotes", value: activePrevotes, fill: "#F59E0B" },
@@ -192,7 +189,7 @@ function ConsensusPage() {
           <div className="flex items-center gap-2 mb-2"><Activity className="w-4 h-4 text-blue-400" /><span className="text-xs text-muted-foreground">Active Validators</span></div>
           <div className="flex items-baseline gap-2"><span className="text-2xl font-bold">{activePrevotes}</span><span className="text-sm text-muted-foreground">/ {totalValidators}</span></div>
           <div className="w-full h-1.5 rounded-full bg-muted mt-2 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 rounded-full transition-all duration-300" style={{ width: `${totalValidators > 0 ? (activePrevotes / totalValidators) * 100 : 0}%` }} />
+            <div className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 rounded-full transition-all" style={{ width: `${(activePrevotes / totalValidators) * 100}%` }} />
           </div>
         </div>
 
@@ -266,7 +263,7 @@ function ConsensusPage() {
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
                 <Pie data={stepDistribution} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={2} dataKey="value">
-                  {stepDistribution.map((entry, i) => (<Cell key={i} fill={entry.fill} />))}
+                  {stepDistribution.map((_, i) => (<Cell key={i} fill={stepDistribution[i].fill} />))}
                 </Pie>
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
                 <Legend />
@@ -278,30 +275,15 @@ function ConsensusPage() {
         <Card>
           <SectionTitle title="Live Voting Status" icon={<Activity className="w-5 h-5 text-emerald-400" />} />
           <div className="space-y-4 mt-2">
-            <div>
-              <div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground">Prevotes</span><span className="font-medium">{activePrevotes} / {totalValidators}</span></div>
-              <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-amber-500 to-yellow-500 rounded-full transition-all" style={{ width: `${totalValidators > 0 ? (activePrevotes / totalValidators) * 100 : 0}%` }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground">Precommits</span><span className="font-medium">{activePrecommits} / {totalValidators}</span></div>
-              <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full transition-all" style={{ width: `${totalValidators > 0 ? (activePrecommits / totalValidators) * 100 : 0}%` }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground">Consensus Progress</span><span className="font-medium">{onboardRate}%</span></div>
-              <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full transition-all" style={{ width: `${onboardRate}%` }} />
-              </div>
-            </div>
+            <ProgressBar label="Prevotes" value={activePrevotes} total={totalValidators} color="from-amber-500 to-yellow-500" />
+            <ProgressBar label="Precommits" value={activePrecommits} total={totalValidators} color="from-emerald-500 to-green-500" />
+            <ProgressBar label="Consensus Progress" value={onboardRate} total={100} color="from-blue-500 to-violet-500" />
           </div>
         </Card>
       </div>
 
       {/* Validator Vote Grid */}
-      {currentVoteSet && (
+      {currentVoteSet && prevotes.length > 0 && (
         <Card>
           <div className="flex items-center justify-between mb-4">
             <SectionTitle title={`Round ${currentVoteSet.round}`} sub="Validator votes" />
@@ -325,7 +307,7 @@ function ConsensusPage() {
                 displayName = validatorMap.get(pubkeyBase64)!;
               }
 
-              let bgClass = "bg-muted/50";
+              let bgClass = "bg-muted/50 border-border/30";
               if (!isNilVote) bgClass = "bg-emerald-500/20 border-emerald-500/30";
               if (isNilVote && isProposer) bgClass = "bg-amber-500/20 border-amber-500/30";
               if (isNilVote && !isProposer) bgClass = "bg-red-500/10 border-red-500/20";
@@ -342,6 +324,21 @@ function ConsensusPage() {
           </div>
         </Card>
       )}
+    </div>
+  );
+}
+
+function ProgressBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const pct = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div>
+      <div className="flex justify-between text-sm mb-1">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{value}{total <= 100 ? '%' : ` / ${total}`}</span>
+      </div>
+      <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+        <div className={`h-full bg-gradient-to-r ${color} rounded-full transition-all duration-300`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
     </div>
   );
 }
