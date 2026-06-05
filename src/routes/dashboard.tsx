@@ -41,7 +41,7 @@ function useRecentBlocks() {
     queryFn: async () => {
       const latest = await evm.blockNumber();
       if (!latest) return { blocks: [] as any[], latest: 0 };
-      const count = 6;
+      const count = 20;
       const heights = Array.from({ length: count }, (_, i) => latest - i);
       const blocks = await Promise.all(
         heights.map((h) => evm.getBlock(h, true).catch(() => null))
@@ -93,8 +93,6 @@ function DashboardPage() {
   const chartData = [...blocks].reverse().map((b: any) => ({
     h: hexToNum(b.number),
     txs: b.transactions?.length ?? 0,
-    gasUsed: b.gasUsed ? hexToNum(b.gasUsed) : 0,
-    gasLimit: b.gasLimit ? hexToNum(b.gasLimit) : 1,
     time: dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss"),
   }));
 
@@ -111,7 +109,6 @@ function DashboardPage() {
     { name: "Inactive", value: validators.length - activeVals },
   ].filter(d => d.value > 0);
 
-  // Collect recent transactions from blocks
   const recentTxs = blocks
     .flatMap((b: any) => {
       const h = hexToNum(b.number);
@@ -185,7 +182,7 @@ function DashboardPage() {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Transaction Chart */}
+        {/* Block Activity Chart */}
         <Card className="lg:col-span-2">
           <SectionTitle title="Block Activity" sub="Transactions per block (last 20)" />
           <div className="h-64 px-2 pb-4">
@@ -200,10 +197,22 @@ function DashboardPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
-                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="txs" name="Transactions" stroke="#8B5CF6" strokeWidth={2} fill="url(#txGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff", fill: "#8B5CF6" }} />
+                  <Area
+                    type="monotone"
+                    dataKey="txs"
+                    name="Transactions"
+                    stroke="#8B5CF6"
+                    strokeWidth={2.5}
+                    fill="url(#txGrad)"
+                    dot={false}
+                    activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff", fill: "#8B5CF6" }}
+                    isAnimationActive={true}
+                    animationDuration={800}
+                    animationEasing="ease-out"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -221,7 +230,16 @@ function DashboardPage() {
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                    <Pie
+                      data={pieData}
+                      cx="50%" cy="50%"
+                      innerRadius={35} outerRadius={55}
+                      paddingAngle={3}
+                      dataKey="value"
+                      strokeWidth={0}
+                      isAnimationActive={true}
+                      animationDuration={600}
+                    >
                       {pieData.map((_, i) => (
                         <Cell key={i} fill={PIE_COLORS[i]} />
                       ))}
@@ -244,7 +262,16 @@ function DashboardPage() {
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={validatorPie} cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                    <Pie
+                      data={validatorPie}
+                      cx="50%" cy="50%"
+                      innerRadius={35} outerRadius={55}
+                      paddingAngle={3}
+                      dataKey="value"
+                      strokeWidth={0}
+                      isAnimationActive={true}
+                      animationDuration={600}
+                    >
                       {validatorPie.map((_, i) => (
                         <Cell key={i} fill={PIE_COLORS[i + 2]} />
                       ))}
@@ -267,7 +294,7 @@ function DashboardPage() {
 
       {/* Latest Blocks + Recent Transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Latest Blocks */}
+        {/* Latest Blocks - SIMPLE NUMBER ONLY */}
         <Card>
           <SectionTitle 
             title="Latest Blocks" 
@@ -277,28 +304,25 @@ function DashboardPage() {
               </Link>
             } 
           />
-          <div className="space-y-1 px-2 pb-2">
-            {blocks.slice(0, 6).map((b: any) => {
+          <div className="divide-y divide-border/50">
+            {blocks.slice(0, 8).map((b: any) => {
               const h = hexToNum(b.number);
               return (
                 <Link
                   key={b.hash}
                   to="/blocks/$height"
                   params={{ height: String(h) }}
-                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors group"
+                  className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors group"
                 >
-                  <span className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center text-xs font-mono font-medium shrink-0">
-                    {h.toLocaleString()}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs text-muted-foreground font-mono truncate">
-                      {shorten(b.hash, 10, 8)}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground/60">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-mono font-medium tabular-nums group-hover:text-violet-500 transition-colors">
+                      {h.toLocaleString()}
+                    </span>
+                    <span className="text-xs text-muted-foreground/50 font-mono">
                       {dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss")}
-                    </div>
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     {b.transactions?.length ?? 0} txs
                   </span>
                 </Link>
@@ -320,24 +344,24 @@ function DashboardPage() {
               </Link>
             } 
           />
-          <div className="space-y-1 px-2 pb-2">
+          <div className="divide-y divide-border/50">
             {recentTxs.length > 0 ? (
               recentTxs.map((tx: any, i: number) => (
                 <Link
                   key={`${tx.hash}-${i}`}
                   to="/tx/$hash"
                   params={{ hash: String(tx.hash) }}
-                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors group"
+                  className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors group"
                 >
-                  <span className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 grid place-items-center shrink-0">
-                    <ArrowRightLeft className="w-4 h-4 text-cyan-400" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs text-muted-foreground font-mono truncate">
-                      {shorten(String(tx.hash), 10, 8)}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground/60">
-                      Block #{tx.block.toLocaleString()} · {dayjs(tx.time).format("HH:mm:ss")}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <ArrowRightLeft className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-muted-foreground truncate group-hover:text-cyan-400 transition-colors">
+                        {shorten(String(tx.hash), 8, 6)}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/50">
+                        Block #{tx.block.toLocaleString()} · {dayjs(tx.time).format("HH:mm:ss")}
+                      </div>
                     </div>
                   </div>
                 </Link>
