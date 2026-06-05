@@ -64,7 +64,8 @@ function ValidatorDetail() {
       
       const allVals = vals?.validators ?? [];
       const bonded = Number(pool?.bonded_tokens ?? 0);
-      const vp = bonded ? (Number(v?.tokens ?? 0) / bonded) * 100 : 0;
+      const totalTokens = Number(v?.tokens ?? 0);
+      const vp = bonded ? (totalTokens / bonded) * 100 : 0;
       const comm = Number(v?.commission?.commission_rates?.rate ?? 0);
       const maxComm = Number(v?.commission?.commission_rates?.max_rate ?? 0);
       const maxChange = Number(v?.commission?.commission_rates?.max_change_rate ?? 0);
@@ -83,11 +84,21 @@ function ValidatorDetail() {
       const accountAddr = addresses?.accountAddr ?? "";
       const hexAddr = addresses?.hexAddr ?? "";
 
+      // Self delegation — fetch actual delegation from operator to themselves
+      let selfDelegationAmount = 0;
+      if (accountAddr) {
+        try {
+          const selfDelRes = await fetch(
+            `${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations/${accountAddr}`
+          ).then(r => r.json());
+          selfDelegationAmount = Number(selfDelRes?.delegation_response?.balance?.amount ?? 0);
+        } catch {}
+      }
+      const selfDelegationPct = totalTokens > 0 ? (selfDelegationAmount / totalTokens) * 100 : 0;
+
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
 
-      const selfDelegationAmount = Number(v?.tokens ?? 0) * (1 - comm);
-      const selfDelegationPct = Number(v?.tokens ?? 0) > 0 ? (selfDelegationAmount / Number(v?.tokens ?? 0)) * 100 : 0;
-      const commissionPool = Number(v?.tokens ?? 0) * comm;
+      const commissionPool = totalTokens * comm;
       const outstandingRewards = commissionPool * 0.1;
 
       const topDelegators = allVals
@@ -105,7 +116,7 @@ function ValidatorDetail() {
         unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
         selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators, allVals,
         operatorAddr, accountAddr, signerAddr, hexAddr,
-        consensusPubkeyBase64, delegations,
+        consensusPubkeyBase64, delegations, totalTokens,
       };
     },
   });
@@ -133,7 +144,7 @@ function ValidatorDetail() {
     unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
     selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators,
     operatorAddr, accountAddr, signerAddr, hexAddr,
-    consensusPubkeyBase64, delegations,
+    consensusPubkeyBase64, delegations, totalTokens,
   } = data;
 
   const identity = v?.description?.identity;
@@ -147,13 +158,13 @@ function ValidatorDetail() {
   const myReward = userData?.myReward?.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
 
   const vpPieData = [
-    { name: moniker, value: Number(v?.tokens ?? 0) / 1e18 },
-    { name: "Others", value: Math.max(0, (bonded - Number(v?.tokens ?? 0)) / 1e18) },
+    { name: moniker, value: totalTokens / 1e18 },
+    { name: "Others", value: Math.max(0, (bonded - totalTokens) / 1e18) },
   ];
 
   const selfDelPieData = [
     { name: "Self Delegated", value: selfDelegationAmount / 1e18 },
-    { name: "From Delegators", value: Math.max(0, (Number(v?.tokens ?? 0) - selfDelegationAmount) / 1e18) },
+    { name: "From Delegators", value: Math.max(0, (totalTokens - selfDelegationAmount) / 1e18) },
   ];
 
   return (
@@ -181,7 +192,7 @@ function ValidatorDetail() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="Total Bonded" value={formatQIE(v?.tokens ?? "0", 1)} sub={`${vp.toFixed(2)}% of total`} />
+        <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="Total Bonded" value={formatQIE(totalTokens, 1)} sub={`${vp.toFixed(2)}% of total`} />
         <InfoCard icon={<User className="w-4 h-4 text-emerald-400" />} label="Self Bonded" value={formatQIE(selfDelegationAmount, 1)} sub={`${selfDelegationPct.toFixed(2)}%`} />
         <InfoCard icon={<Percent className="w-4 h-4 text-amber-400" />} label="Commission" value={`${(comm * 100).toFixed(0)}%`} sub={`Max: ${(maxComm * 100).toFixed(0)}%`} />
         <InfoCard icon={<TrendingUp className="w-4 h-4 text-cyan-400" />} label="Annual Profit" value={vp > 0 ? `${(vp * (1 - comm)).toFixed(2)}%` : "—"} />
@@ -274,7 +285,7 @@ function ValidatorDetail() {
                       <td className="p-3 text-right tabular-nums">
                         <span className="text-xs text-muted-foreground">
                           {Number(d.balance?.amount ?? 0) > 0 
-                            ? ((Number(d.balance.amount) / Number(v?.tokens ?? 1)) * 100).toFixed(2) + '%'
+                            ? ((Number(d.balance.amount) / totalTokens) * 100).toFixed(2) + '%'
                             : '—'}
                         </span>
                       </td>
