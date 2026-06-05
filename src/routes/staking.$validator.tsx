@@ -4,8 +4,9 @@ import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
 import { NETWORK } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
-import { ArrowLeft, User, Layers, Gift, Coins, Percent, Shield, AlertTriangle, Clock, CheckCircle, ExternalLink, Copy, TrendingUp, FileText, Key, Unlock } from "lucide-react";
+import { ArrowLeft, User, Layers, Gift, Coins, Percent, Shield, AlertTriangle, ExternalLink, Copy, TrendingUp, FileText, Key, Unlock } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { fromBech32, toHex, pubkeyToRawAddress } from "@cosmjs/encoding";
 import dayjs from "dayjs";
 import { useState } from "react";
 
@@ -15,6 +16,36 @@ export const Route = createFileRoute("/staking/$validator")({
 });
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#F59E0B", "#10B981"];
+
+// Helper: Convert bech32 address to hex
+function bech32ToHex(address: string): string {
+  try {
+    const decoded = fromBech32(address);
+    return toHex(decoded.data).toUpperCase();
+  } catch {
+    return address;
+  }
+}
+
+// Helper: Get account address from operator address
+function operatorToAccount(operator: string): string {
+  return operator.replace("qievaloper", "qie");
+}
+
+// Helper: Get signer address from operator address
+function operatorToSigner(operator: string): string {
+  return operator.replace("qievaloper", "qievalcons");
+}
+
+// Helper: Get consensus hex address from pubkey
+function pubkeyToConsensusHex(pubkeyBase64: string): string {
+  try {
+    const raw = pubkeyToRawAddress("/cosmos.crypto.ed25519.PubKey", Buffer.from(pubkeyBase64, "base64"));
+    return toHex(raw).toUpperCase();
+  } catch {
+    return "";
+  }
+}
 
 function ValidatorDetail() {
   const { validator } = Route.useParams();
@@ -37,29 +68,26 @@ function ValidatorDetail() {
       const comm = Number(v?.commission?.commission_rates?.rate ?? 0);
       const maxComm = Number(v?.commission?.commission_rates?.max_rate ?? 0);
       const maxChange = Number(v?.commission?.commission_rates?.max_change_rate ?? 0);
-      const selfBonded = Number(v?.tokens ?? 0) * (1 - comm);
       const minSelfDelegation = v?.min_self_delegation ?? "0";
       const unbondingHeight = v?.unbonding_height ?? "0";
       const unbondingTime = v?.unbonding_time;
 
-      const info = signingInfo?.info?.find((s: any) => s.address === v?.consensus_pubkey?.key);
+      // Addresses
+      const operatorAddr = v?.operator_address ?? validator;
+      const accountAddr = operatorToAccount(operatorAddr);
+      const signerAddr = operatorToSigner(operatorAddr);
+      const consensusPubkeyBase64 = v?.consensus_pubkey?.key ?? "";
+      const consensusHexAddr = pubkeyToConsensusHex(consensusPubkeyBase64);
+      const hexAddr = bech32ToHex(operatorAddr);
 
-      // Extract hex address from operator address (bech32 decode)
-      const operatorAddr = v?.operator_address ?? "";
+      // Validator info from signing infos
+      const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
 
-      // Get validator hex address - this is the hex representation
-      // For QIE, the hex address is derived differently
-      const hexAddr = operatorAddr;
-
-      // Get consensus address (validator consensus address)
-      const consensusAddr = v?.consensus_pubkey?.key ?? "";
-
-      // Signer address (consensus address in bech32 valcons format)
-      const signerAddr = operatorAddr.replace("qievaloper", "qievalcons");
-
-      // Outstanding rewards & commissions
-      const outstandingRewards = Number(v?.tokens ?? 0) * comm * 0.01; // rough estimate
+      // Self delegation
+      const selfDelegationAmount = Number(v?.tokens ?? 0) * (1 - comm);
+      const selfDelegationPct = Number(v?.tokens ?? 0) > 0 ? (selfDelegationAmount / Number(v?.tokens ?? 0)) * 100 : 0;
       const commissionPool = Number(v?.tokens ?? 0) * comm;
+      const outstandingRewards = commissionPool * 0.1; // rough 10% of commission
 
       // Top delegators by VP
       const topDelegators = allVals
@@ -72,32 +100,12 @@ function ValidatorDetail() {
           vp: bonded ? (Number(dv.tokens) / bonded) * 100 : 0,
         }));
 
-      // Self delegation info
-      const selfDelegationAmount = Number(v?.tokens ?? 0) - (Number(v?.tokens ?? 0) * comm);
-      const selfDelegationPct = Number(v?.tokens ?? 0) > 0 ? (selfDelegationAmount / Number(v?.tokens ?? 0)) * 100 : 0;
-
       return {
-        v,
-        vp,
-        comm,
-        maxComm,
-        maxChange,
-        selfBonded,
-        minSelfDelegation,
-        unbondingHeight,
-        unbondingTime,
-        outstandingRewards,
-        commissionPool,
-        selfDelegationAmount,
-        selfDelegationPct,
-        bonded,
-        info,
-        topDelegators,
-        allVals,
-        operatorAddr,
-        hexAddr,
-        consensusAddr,
-        signerAddr,
+        v, vp, comm, maxComm, maxChange, minSelfDelegation,
+        unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
+        selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators, allVals,
+        operatorAddr, accountAddr, signerAddr, hexAddr,
+        consensusPubkeyBase64, consensusHexAddr,
       };
     },
   });
@@ -121,10 +129,11 @@ function ValidatorDetail() {
   if (error || !data?.v) return <ErrorState error={error || "Validator not found"} />;
 
   const {
-    v, vp, comm, maxComm, maxChange, selfBonded, minSelfDelegation,
+    v, vp, comm, maxComm, maxChange, minSelfDelegation,
     unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
     selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators,
-    operatorAddr, hexAddr, consensusAddr, signerAddr,
+    operatorAddr, accountAddr, signerAddr, hexAddr,
+    consensusPubkeyBase64, consensusHexAddr,
   } = data;
 
   const identity = v?.description?.identity;
@@ -137,16 +146,11 @@ function ValidatorDetail() {
   const myStake = myDel?.balance?.amount ?? "0";
   const myReward = userData?.myReward?.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
 
-  // Get account address from operator address
-  const accountAddr = operatorAddr.replace("qievaloper", "qie");
-
-  // Voting power pie
   const vpPieData = [
     { name: moniker, value: Number(v?.tokens ?? 0) / 1e18 },
     { name: "Others", value: Math.max(0, (bonded - Number(v?.tokens ?? 0)) / 1e18) },
   ];
 
-  // Self delegation pie
   const selfDelPieData = [
     { name: "Self Delegated", value: selfDelegationAmount / 1e18 },
     { name: "From Delegators", value: Math.max(0, (Number(v?.tokens ?? 0) - selfDelegationAmount) / 1e18) },
@@ -154,7 +158,7 @@ function ValidatorDetail() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Back + Header */}
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Link to="/staking" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-violet-500 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
@@ -162,8 +166,11 @@ function ValidatorDetail() {
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center overflow-hidden">
             {identity ? (
-              <img src={`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`} alt=""
-                className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <img
+                src={`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`}
+                alt="" className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
             ) : (
               <User className="w-6 h-6 text-violet-400" />
             )}
@@ -178,11 +185,11 @@ function ValidatorDetail() {
         </div>
       </div>
 
-      {/* Top Stats Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="Total Bonded Tokens" value={formatQIE(v?.tokens ?? "0", 1)} sub={`${vp.toFixed(2)}% of total`} />
+        <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="Total Bonded" value={formatQIE(v?.tokens ?? "0", 1)} sub={`${vp.toFixed(2)}% of total`} />
         <InfoCard icon={<User className="w-4 h-4 text-emerald-400" />} label="Self Bonded" value={formatQIE(selfDelegationAmount, 1)} sub={`${selfDelegationPct.toFixed(2)}%`} />
-        <InfoCard icon={<Percent className="w-4 h-4 text-amber-400" />} label="Commission Rate" value={`${(comm * 100).toFixed(0)}%`} sub={`Max: ${(maxComm * 100).toFixed(0)}%`} />
+        <InfoCard icon={<Percent className="w-4 h-4 text-amber-400" />} label="Commission" value={`${(comm * 100).toFixed(0)}%`} sub={`Max: ${(maxComm * 100).toFixed(0)}%`} />
         <InfoCard icon={<TrendingUp className="w-4 h-4 text-cyan-400" />} label="Annual Profit" value={vp > 0 ? `${(vp * (1 - comm)).toFixed(2)}%` : "—"} />
       </div>
 
@@ -195,9 +202,8 @@ function ValidatorDetail() {
         </div>
       )}
 
-      {/* Charts Row */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Voting Power Composition */}
         <Card>
           <SectionTitle title="Voting Power Composition" />
           <div className="h-48">
@@ -220,7 +226,6 @@ function ValidatorDetail() {
           </div>
         </Card>
 
-        {/* Self Delegation Chart */}
         <Card>
           <SectionTitle title="Delegation Distribution" />
           <div className="h-48">
@@ -246,12 +251,12 @@ function ValidatorDetail() {
 
       {/* Commissions & Rewards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <InfoCard icon={<Coins className="w-4 h-4 text-amber-400" />} label="Commissions" value={`${formatQIE(commissionPool * comm, 2)} ${NETWORK.symbol}`} />
+        <InfoCard icon={<Coins className="w-4 h-4 text-amber-400" />} label="Commissions" value={`${formatQIE(commissionPool, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Gift className="w-4 h-4 text-emerald-400" />} label="Outstanding Rewards" value={`${formatQIE(outstandingRewards, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Unlock className="w-4 h-4 text-violet-400" />} label="Min Self Delegation" value={minSelfDelegation !== "0" ? `${formatQIE(minSelfDelegation, 0)} ${NETWORK.symbol}` : "—"} />
       </div>
 
-      {/* Top 10 Validators by VP */}
+      {/* Top 10 */}
       <Card>
         <SectionTitle title="Top 10 Validators by Voting Power" />
         <div className="space-y-2 mt-2">
@@ -263,16 +268,13 @@ function ValidatorDetail() {
                 </span>
                 <span className="text-sm">{d.name}</span>
               </div>
-              <div className="text-right">
-                <span className="text-xs tabular-nums">{formatQIE(d.tokens * 1e18, 0)}</span>
-                <span className="text-[10px] text-muted-foreground ml-1">({d.vp.toFixed(2)}%)</span>
-              </div>
+              <span className="text-xs tabular-nums">{formatQIE(d.tokens * 1e18, 0)} ({d.vp.toFixed(2)}%)</span>
             </div>
           ))}
         </div>
       </Card>
 
-      {/* Validator Status */}
+      {/* Status */}
       <Card>
         <SectionTitle title="Validator Status" icon={<Shield className="w-5 h-5 text-violet-500" />} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
@@ -282,7 +284,7 @@ function ValidatorDetail() {
           <StatusItem label="Missed Blocks" value={info?.missed_blocks_counter ?? "—"} />
           <StatusItem label="Start Height" value={info?.start_height ?? "—"} />
           <StatusItem label="Unbonding Height" value={unbondingHeight !== "0" ? unbondingHeight : "—"} />
-          <StatusItem label="Unbonding Time" value={unbondingTime ? dayjs(unbondingTime).format("MMM DD, YYYY") : "—"} />
+          <StatusItem label="Unbonding Time" value={unbondingTime && unbondingTime !== "1970-01-01T00:00:00Z" ? dayjs(unbondingTime).format("MMM DD, YYYY") : "—"} />
           <StatusItem label="Min Self Delegation" value={minSelfDelegation !== "0" ? formatQIE(minSelfDelegation, 0) : "—"} />
         </div>
       </Card>
@@ -293,13 +295,11 @@ function ValidatorDetail() {
           <SectionTitle title="About Us" icon={<FileText className="w-5 h-5 text-cyan-500" />} />
           <div className="space-y-3 mt-2">
             {v.description.details && <p className="text-sm text-muted-foreground">{v.description.details}</p>}
-            <div className="flex flex-wrap gap-4 text-sm">
-              {v.description.website && (
-                <a href={v.description.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-violet-400 hover:text-violet-300">
-                  <ExternalLink className="w-4 h-4" /> Website: {v.description.website}
-                </a>
-              )}
-            </div>
+            {v.description.website && (
+              <a href={v.description.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm text-violet-400 hover:text-violet-300">
+                <ExternalLink className="w-4 h-4" /> Website: {v.description.website}
+              </a>
+            )}
             {v.description.security_contact && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Shield className="w-4 h-4" /> Contact: {v.description.security_contact}
@@ -317,11 +317,12 @@ function ValidatorDetail() {
           <DetailRow label="Operator Address" value={operatorAddr} mono copy />
           <DetailRow label="Hex Address" value={hexAddr} mono copy />
           <DetailRow label="Signer Address" value={signerAddr} mono copy />
-          <DetailRow label="Consensus Public Key" value={JSON.stringify(v?.consensus_pubkey)} mono />
+          {consensusHexAddr && <DetailRow label="Consensus Hex Address" value={consensusHexAddr} mono copy />}
+          <DetailRow label="Consensus Public Key" value={consensusPubkeyBase64} mono copy />
         </div>
       </Card>
 
-      {/* Commission Details */}
+      {/* Commission */}
       <Card>
         <SectionTitle title="Commission" sub={commissionUpdateTime ? `Updated at ${dayjs(commissionUpdateTime).format("YYYY-MM-DD HH:mm:ss")}` : ""} icon={<Percent className="w-5 h-5 text-amber-500" />} />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-2">
@@ -334,6 +335,7 @@ function ValidatorDetail() {
   );
 }
 
+// --- Helper Components ---
 function InfoCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 hover:border-violet-500/20 transition-colors">
