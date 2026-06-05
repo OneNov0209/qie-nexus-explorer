@@ -45,7 +45,7 @@ export function Topbar() {
   // Preload validators for fast filter
   const { data: vals } = useQuery({
     queryKey: ["search-validators"],
-    queryFn: () => cosmos.validators().then((r) => r?.validators ?? []),
+    queryFn: () => cosmos.validators().then((r: any) => r?.validators ?? []),
     staleTime: 60_000,
   });
 
