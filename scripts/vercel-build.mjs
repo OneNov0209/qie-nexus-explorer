@@ -25,12 +25,20 @@ if (existsSync(nitroJsonPath)) {
   writeFileSync(nitroJsonPath, JSON.stringify(nitro, null, 2));
 }
 
-// Create functions directory if it doesn't exist
+// Create functions directory
 const functionsDir = join(outputDir, "functions");
 const serverFuncDir = join(functionsDir, "__server.func");
 if (!existsSync(serverFuncDir)) {
   mkdirSync(serverFuncDir, { recursive: true });
 }
+
+// Copy server into the function folder so it's available at runtime
+console.log("[vercel-build] Copying .vercel/output/server → functions/__server.func/server ...");
+cpSync(serverOut, join(serverFuncDir, "server"), { recursive: true, force: true });
+
+// Copy client into the function folder
+console.log("[vercel-build] Copying .vercel/output/client → functions/__server.func/client ...");
+cpSync(clientOut, join(serverFuncDir, "client"), { recursive: true, force: true });
 
 // Create .vc-config.json for the server function
 const vcConfigPath = join(serverFuncDir, ".vc-config.json");
@@ -49,9 +57,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const serverEntry = join(__dirname, '../../server/index.mjs');
-
-const handler = await import(serverEntry);
+const handler = await import(join(__dirname, 'server/index.mjs'));
 export default handler.default || handler;
 `);
 
