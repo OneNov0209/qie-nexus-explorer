@@ -2,11 +2,10 @@ import axios from "axios";
 import { NETWORK } from "@/data/network";
 import { cached, ttlFor } from "./cache";
 
-const rpcAxios = axios.create({ baseURL: NETWORK.rpc, timeout: 15000 });
-const restAxios = axios.create({ baseURL: NETWORK.rest, timeout: 15000 });
+// Gunakan proxy API routes (relatif ke domain yang sama)
+const rpcAxios = axios.create({ baseURL: '/api/rpc', timeout: 15000 });
+const restAxios = axios.create({ baseURL: '/api/rest', timeout: 15000 });
 
-// Exported as `rpc`/`rest` for back-compat. Every GET is routed through the
-// shared cache + rate limiter. Non-GET passes through (rare here).
 function wrap(client: ReturnType<typeof axios.create>, tag: string) {
   return {
     get<T = any>(url: string, config?: Parameters<typeof client.get>[1]) {
@@ -24,7 +23,7 @@ export const rest = wrap(restAxios, "rest") as any;
 export const evmRpc = async <T = any>(method: string, params: any[] = []): Promise<T> => {
   const key = `evm:${method}(${JSON.stringify(params)})`;
   return cached(key, ttlFor(method), async () => {
-    const { data } = await axios.post(NETWORK.evmRpc, {
+    const { data } = await axios.post('/api/evm', {
       jsonrpc: "2.0", id: Date.now(), method, params,
     }, { timeout: 15000 });
     if (data.error) throw new Error(data.error.message);
@@ -32,7 +31,6 @@ export const evmRpc = async <T = any>(method: string, params: any[] = []): Promi
   });
 };
 
-// --- EVM helpers ---
 export const evm = {
   blockNumber: async () => parseInt(await evmRpc<string>("eth_blockNumber"), 16),
   getBlock: (numOrHash: number | string, full = false) => {
@@ -55,7 +53,6 @@ export const formatWei = (hex?: string, decimals = 6) => {
   return v.toLocaleString(undefined, { maximumFractionDigits: decimals });
 };
 
-// Format aqie -> QIE
 export const formatQIE = (amount: string | number | undefined, decimals = 4) => {
   if (amount === undefined || amount === null) return "0";
   const n = typeof amount === "string" ? Number(amount) : amount;
@@ -70,7 +67,6 @@ export const shorten = (s?: string, head = 8, tail = 6) => {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 };
 
-// --- Cosmos REST helpers ---
 export const cosmos = {
   status: () => rpc.get("/status").then((r: any) => r.data?.result),
   netInfo: () => rpc.get("/net_info").then((r: any) => r.data?.result),
