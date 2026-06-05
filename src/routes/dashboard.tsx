@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cosmos, evm, evmRpc, formatQIE, hexToNum, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { StatCard, Card, SectionTitle, Loading, Pill } from "@/components/ui/primitives";
-import { Activity, Boxes, Coins, Users, Layers, Percent, Clock, Zap, Sparkles, ChevronRight, ArrowRightLeft } from "lucide-react";
+import { Activity, Boxes, Coins, Users, Layers, Percent, Clock, Zap, Sparkles, ChevronRight, ArrowRightLeft, Cpu, GitCommit, Package, Box } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import dayjs from "dayjs";
 import { motion } from "framer-motion";
@@ -51,6 +51,55 @@ function useRecentBlocks() {
   });
 }
 
+function useAppVersion() {
+  return useQuery({
+    queryKey: ["app-version"],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      try {
+        // Fetch from REST API application info
+        const nodeInfo = await fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/node_info`)
+          .then(r => r.json())
+          .catch(() => null);
+        
+        const appVersion = nodeInfo?.application_version;
+        
+        if (appVersion) {
+          return {
+            name: appVersion.name || "—",
+            appName: appVersion.app_name || "—",
+            version: appVersion.version || "—",
+            gitCommit: appVersion.git_commit || "—",
+            buildTags: appVersion.build_tags || "—",
+            goVersion: appVersion.go_version || "—",
+            buildDeps: appVersion.build_deps || [],
+            cosmosSdkVersion: appVersion.cosmos_sdk_version || "—",
+          };
+        }
+        
+        // Fallback: try from status endpoint
+        const status = await cosmos.status().catch(() => null);
+        if (status) {
+          return {
+            name: status.node_info?.version || "—",
+            appName: status.node_info?.app_name || "QIE",
+            version: status.node_info?.network || "—",
+            gitCommit: "—",
+            buildTags: "—",
+            goVersion: status.node_info?.go_version || "—",
+            buildDeps: [],
+            cosmosSdkVersion: status.node_info?.cosmos_sdk_version || "—",
+          };
+        }
+        
+        return null;
+      } catch {
+        return null;
+      }
+    },
+  });
+}
+
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -72,6 +121,7 @@ const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4
 function DashboardPage() {
   const { data, isLoading } = useStats();
   const recent = useRecentBlocks();
+  const appVersion = useAppVersion();
 
   const evmHeight = data?.evmBlock ? parseInt(data.evmBlock, 16) : 0;
   const height = data?.status?.sync_info?.latest_block_height ?? evmHeight;
@@ -180,7 +230,7 @@ function DashboardPage() {
         </div>
       )}
 
-      {/* Charts Row */}
+      {/* Application Versions + Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Block Activity Chart */}
         <Card className="lg:col-span-2">
@@ -221,6 +271,46 @@ function DashboardPage() {
           </div>
         </Card>
 
+        {/* Application Versions */}
+        <Card>
+          <SectionTitle title="Application Versions" sub="Node software info" icon={<Package className="w-4 h-4 text-violet-400" />} />
+          {appVersion.data ? (
+            <div className="space-y-3 mt-2">
+              <VersionRow icon={<Box className="w-3.5 h-3.5 text-emerald-400" />} label="App Name" value={appVersion.data.appName} />
+              <VersionRow icon={<Cpu className="w-3.5 h-3.5 text-blue-400" />} label="Name" value={appVersion.data.name} />
+              <VersionRow icon={<Package className="w-3.5 h-3.5 text-violet-400" />} label="Version" value={appVersion.data.version} />
+              <VersionRow icon={<GitCommit className="w-3.5 h-3.5 text-amber-400" />} label="Git Commit" value={appVersion.data.gitCommit} mono />
+              <VersionRow icon={<Zap className="w-3.5 h-3.5 text-cyan-400" />} label="Go Version" value={appVersion.data.goVersion} />
+              <VersionRow icon={<Layers className="w-3.5 h-3.5 text-pink-400" />} label="Cosmos SDK" value={appVersion.data.cosmosSdkVersion} />
+              {appVersion.data.buildTags && appVersion.data.buildTags !== "—" && (
+                <VersionRow icon={<Sparkles className="w-3.5 h-3.5 text-rose-400" />} label="Build Tags" value={appVersion.data.buildTags} />
+              )}
+              {appVersion.data.buildDeps && appVersion.data.buildDeps.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                    <GitCommit className="w-3 h-3 text-amber-400" /> Build Deps
+                  </p>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {appVersion.data.buildDeps.slice(0, 10).map((dep: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] px-2 py-1 rounded bg-muted/30">
+                        <span className="font-mono text-muted-foreground">{dep.path || dep}</span>
+                        <span className="text-muted-foreground/60">{dep.version || ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : appVersion.isLoading ? (
+            <div className="text-sm text-muted-foreground p-4 text-center">Loading versions...</div>
+          ) : (
+            <div className="text-sm text-muted-foreground p-4 text-center">Unable to fetch version info</div>
+          )}
+        </Card>
+      </div>
+
+      {/* Network Pulse + Latest Blocks + Recent Transactions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Network Pulse Pie Charts */}
         <Card>
           <SectionTitle title="Network Pulse" sub="Distribution overview" />
@@ -290,11 +380,8 @@ function DashboardPage() {
             </div>
           </div>
         </Card>
-      </div>
 
-      {/* Latest Blocks + Recent Transactions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Latest Blocks - SIMPLE NUMBER ONLY */}
+        {/* Latest Blocks */}
         <Card>
           <SectionTitle 
             title="Latest Blocks" 
@@ -372,6 +459,18 @@ function DashboardPage() {
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function VersionRow({ icon, label, value, mono }: { icon: React.ReactNode; label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+      </div>
+      <span className={`text-xs font-medium ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
