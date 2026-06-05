@@ -9,5 +9,6 @@ export default defineConfig({
     output: {
       dir: ".vercel/output",
     },
+    serveStatic: true,
   },
 });
