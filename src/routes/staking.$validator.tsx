@@ -16,10 +16,8 @@ export const Route = createFileRoute("/staking/$validator")({
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#F59E0B", "#10B981"];
 
-// Helper: Get account & hex address from validator delegations
 async function fetchValidatorAddresses(operatorAddr: string) {
   try {
-    // Get first delegator (usually self-delegation)
     const delRes = await fetch(
       `${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations?pagination.limit=1`
     ).then(r => r.json());
@@ -27,7 +25,6 @@ async function fetchValidatorAddresses(operatorAddr: string) {
     const delegatorAddr = delRes?.delegation_responses?.[0]?.delegation?.delegator_address;
     if (!delegatorAddr) return { accountAddr: "", hexAddr: "" };
 
-    // Get account info for pub_key
     const accRes = await fetch(
       `${NETWORK.rest}/cosmos/auth/v1beta1/accounts/${delegatorAddr}`
     ).then(r => r.json());
@@ -35,13 +32,7 @@ async function fetchValidatorAddresses(operatorAddr: string) {
     const pubKeyBase64 = accRes?.account?.base_account?.pub_key?.key;
     if (!pubKeyBase64) return { accountAddr: delegatorAddr, hexAddr: "" };
 
-    // Convert pub_key to bytes
     const pubKeyBytes = Uint8Array.from(atob(pubKeyBase64), c => c.charCodeAt(0));
-    
-    // For secp256k1 uncompressed (65 bytes, starts with 04), remove prefix
-    const rawPubKey = pubKeyBytes[0] === 0x04 ? pubKeyBytes.slice(1) : pubKeyBytes;
-    
-    // Simple hex representation (full pubkey hex)
     const hexAddr = Array.from(pubKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 
     return { accountAddr: delegatorAddr, hexAddr };
@@ -58,15 +49,19 @@ function ValidatorDetail() {
     queryKey: ["validator-detail", validator],
     refetchInterval: 15_000,
     queryFn: async () => {
-      const [v, pool, vals, signingInfo, validatorSet, addresses] = await Promise.all([
+      const [v, pool, vals, signingInfo, validatorSet, addresses, delegationsRes] = await Promise.all([
         cosmos.validatorByAddr(validator).catch(() => null),
         cosmos.stakingPool(),
         cosmos.validators(),
         cosmos.signingInfos().catch(() => ({ info: [] })),
         fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/validatorsets/latest`).then(r => r.json()).catch(() => ({ validators: [] })),
         fetchValidatorAddresses(validator),
+        fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${validator}/delegations?pagination.limit=50`)
+          .then(r => r.json()).catch(() => ({ delegation_responses: [] })),
       ]);
 
+      const delegations = delegationsRes?.delegation_responses ?? [];
+      
       const allVals = vals?.validators ?? [];
       const bonded = Number(pool?.bonded_tokens ?? 0);
       const vp = bonded ? (Number(v?.tokens ?? 0) / bonded) * 100 : 0;
@@ -80,17 +75,14 @@ function ValidatorDetail() {
       const operatorAddr = v?.operator_address ?? validator;
       const consensusPubkeyBase64 = v?.consensus_pubkey?.key ?? "";
 
-      // Find validator in validatorset
       const vsValidator = (validatorSet?.validators ?? []).find(
         (sv: any) => sv.pub_key?.key === consensusPubkeyBase64
       );
       const signerAddr = vsValidator?.address ?? "";
 
-      // From delegations
       const accountAddr = addresses?.accountAddr ?? "";
       const hexAddr = addresses?.hexAddr ?? "";
 
-      // Validator info
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
 
       const selfDelegationAmount = Number(v?.tokens ?? 0) * (1 - comm);
@@ -113,7 +105,7 @@ function ValidatorDetail() {
         unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
         selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators, allVals,
         operatorAddr, accountAddr, signerAddr, hexAddr,
-        consensusPubkeyBase64,
+        consensusPubkeyBase64, delegations,
       };
     },
   });
@@ -141,7 +133,7 @@ function ValidatorDetail() {
     unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
     selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators,
     operatorAddr, accountAddr, signerAddr, hexAddr,
-    consensusPubkeyBase64,
+    consensusPubkeyBase64, delegations,
   } = data;
 
   const identity = v?.description?.identity;
@@ -250,6 +242,79 @@ function ValidatorDetail() {
         <InfoCard icon={<Gift className="w-4 h-4 text-emerald-400" />} label="Outstanding Rewards" value={`${formatQIE(outstandingRewards, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Unlock className="w-4 h-4 text-violet-400" />} label="Min Self Delegation" value={minSelfDelegation !== "0" ? `${formatQIE(minSelfDelegation, 0)} ${NETWORK.symbol}` : "—"} />
       </div>
+
+      {/* Voting Power Events (Delegations) */}
+      <Card>
+        <SectionTitle title="Voting Power Events" sub={`${delegations.length} delegator${delegations.length !== 1 ? 's' : ''}`} icon={<Layers className="w-5 h-5 text-violet-500" />} />
+        {delegations.length > 0 ? (
+          <div className="overflow-x-auto mt-2">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/30">
+                  <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Delegator</th>
+                  <th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Amount</th>
+                  <th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Shares</th>
+                </tr>
+              </thead>
+              <tbody>
+                {delegations
+                  .sort((a: any, b: any) => Number(b.balance?.amount ?? 0) - Number(a.balance?.amount ?? 0))
+                  .map((d: any, i: number) => (
+                    <tr key={i} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
+                      <td className="p-3">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {shorten(d.delegation?.delegator_address ?? "", 12, 10)}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right tabular-nums">
+                        <span className="text-sm font-medium text-emerald-400">
+                          + {formatQIE(d.balance?.amount ?? "0", 0)} {NETWORK.symbol}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right tabular-nums">
+                        <span className="text-xs text-muted-foreground">
+                          {Number(d.balance?.amount ?? 0) > 0 
+                            ? ((Number(d.balance.amount) / Number(v?.tokens ?? 1)) * 100).toFixed(2) + '%'
+                            : '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground text-sm">No delegations found.</div>
+        )}
+      </Card>
+
+      {/* Transactions */}
+      <Card>
+        <SectionTitle title="Transactions" sub="Recent transactions related to this validator" icon={<FileText className="w-5 h-5 text-cyan-500" />} />
+        <div className="overflow-x-auto mt-2">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/60 bg-muted/30">
+                <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Height</th>
+                <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Hash</th>
+                <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Messages</th>
+                <th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <AlertTriangle className="w-8 h-8 opacity-30" />
+                    <p className="text-sm">Transaction search is not supported by this node.</p>
+                    <p className="text-xs opacity-60">The REST API does not support event-based transaction queries.</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       {/* Top 10 */}
       <Card>
