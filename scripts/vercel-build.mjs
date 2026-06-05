@@ -45,19 +45,14 @@ writeFileSync(vcConfigPath, JSON.stringify({
 // Create the server function entry point
 const serverFuncEntry = join(serverFuncDir, "index.mjs");
 writeFileSync(serverFuncEntry, `
-import { createServer } from 'nitro/node';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const rootDir = join(__dirname, '../../..');
+const serverEntry = join(__dirname, '../../server/index.mjs');
 
-const server = createServer({
-  rootDir,
-  entry: join(__dirname, '../../server/index.mjs'),
-});
-
-export default server;
+const handler = await import(serverEntry);
+export default handler.default || handler;
 `);
 
 // Create config.json for Vercel routing
