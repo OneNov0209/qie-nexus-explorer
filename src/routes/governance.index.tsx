@@ -4,6 +4,8 @@ import { cosmos, formatQIE } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill, StatCard } from "@/components/ui/primitives";
 import { FileText, CheckCircle, XCircle, Clock, AlertTriangle, ChevronRight } from "lucide-react";
 import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+dayjs.extend(relativeTime);
 
 export const Route = createFileRoute("/governance/")({
   head: () => ({ meta: [{ title: "Governance — QIE Explorer" }] }),
@@ -17,6 +19,20 @@ const STATUS: Record<string, { label: string; variant: "default" | "success" | "
   PROPOSAL_STATUS_REJECTED: { label: "Rejected", variant: "danger", icon: XCircle },
   PROPOSAL_STATUS_FAILED: { label: "Failed", variant: "danger", icon: XCircle },
 };
+
+// Generate title from content @type
+function getProposalTitle(content: any): string {
+  if (!content) return "Untitled Proposal";
+  const type = content["@type"] || "";
+  if (type.includes("MsgUpdateParams")) return "Update Params";
+  if (type.includes("MsgSoftwareUpgrade")) return "Software Upgrade";
+  if (type.includes("MsgCancelUpgrade")) return "Cancel Upgrade";
+  if (type.includes("CommunityPoolSpend")) return "Community Pool Spend";
+  if (type.includes("ParameterChange")) return "Parameter Change";
+  if (type.includes("Text")) return "Text Proposal";
+  const parts = type.split(".");
+  return parts[parts.length - 1] || "Untitled Proposal";
+}
 
 function GovernanceListPage() {
   const { data, isLoading, error } = useQuery({
@@ -35,7 +51,6 @@ function GovernanceListPage() {
     <div className="space-y-6 pb-8">
       <SectionTitle title="Governance" sub="On-chain proposals & voting" icon={<FileText className="w-5 h-5 text-violet-500" />} />
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Voting" value={counts.PROPOSAL_STATUS_VOTING_PERIOD ?? 0} icon={<Clock className="w-4 h-4 text-amber-400" />} />
         <StatCard label="Passed" value={counts.PROPOSAL_STATUS_PASSED ?? 0} icon={<CheckCircle className="w-4 h-4 text-emerald-400" />} />
@@ -43,13 +58,11 @@ function GovernanceListPage() {
         <StatCard label="Deposit" value={counts.PROPOSAL_STATUS_DEPOSIT_PERIOD ?? 0} icon={<AlertTriangle className="w-4 h-4 text-blue-400" />} />
       </div>
 
-      {/* Proposal List */}
       <div className="space-y-3">
         {props.map((p: any) => {
           const st = STATUS[p.status] ?? { label: p.status, variant: "default" as const, icon: FileText };
           const StatusIcon = st.icon;
-          const title = p.content?.title ?? p.title ?? "Untitled Proposal";
-          const description = p.content?.description ?? p.summary ?? "";
+          const title = getProposalTitle(p.content);
 
           return (
             <Link
@@ -60,7 +73,6 @@ function GovernanceListPage() {
             >
               <Card className="hover:border-violet-500/20 hover:shadow-lg hover:shadow-violet-500/5 transition-all duration-200">
                 <div className="flex items-start gap-4">
-                  {/* Status Icon */}
                   <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${
                     st.variant === "success" ? "bg-emerald-500/10" :
                     st.variant === "danger" ? "bg-red-500/10" :
@@ -81,21 +93,9 @@ function GovernanceListPage() {
                       <Pill variant={st.variant}>{st.label}</Pill>
                     </div>
                     <h3 className="font-semibold group-hover:text-violet-400 transition-colors">{title}</h3>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{description}</p>
-
-                    {/* Voting bar */}
-                    {p.status === "PROPOSAL_STATUS_VOTING_PERIOD" && p.final_tally_result && (
-                      <div className="mt-3 flex items-center gap-3">
-                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                          {Number(p.final_tally_result.yes ?? 0) > 0 && (
-                            <div className="h-full bg-emerald-500 float-left" style={{ width: `${(Number(p.final_tally_result.yes) / (Number(p.final_tally_result.yes) + Number(p.final_tally_result.no) + Number(p.final_tally_result.no_with_veto) + Number(p.final_tally_result.abstain) || 1)) * 100}%` }} />
-                          )}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {p.final_tally_result.yes ? formatQIE(p.final_tally_result.yes, 0) : "0"} Yes
-                        </span>
-                      </div>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {p.voting_end_time ? `Ended ${dayjs(p.voting_end_time).fromNow()}` : ""}
+                    </p>
                   </div>
 
                   <ChevronRight className="w-5 h-5 text-muted-foreground/30 group-hover:text-violet-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" />
