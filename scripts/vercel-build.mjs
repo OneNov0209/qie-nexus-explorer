@@ -67,6 +67,14 @@ writeFileSync(configPath, JSON.stringify({
   version: 3,
   routes: [
     {
+      src: "/assets/(.*)",
+      dest: "/__server/assets/$1"
+    },
+    {
+      src: "/favicon\\.(.*)",
+      dest: "/__server/favicon.$1"
+    },
+    {
       src: "/(.*)",
       dest: "/__server"
     }
