@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Activity, Users, Radio, Zap, Clock, Server,
   Wifi, TrendingUp, BarChart3, PieChart, Circle,
@@ -42,7 +42,8 @@ function ConsensusPage() {
         cosmos.netInfo().catch(() => null),
         cosmos.consensusState().catch(() => null),
         cosmos.validators().catch(() => ({ validators: [] })),
-        fetch(`${NETWORK.rpc}/dump_consensus_state`).then(r => r.json()).catch(() => null),
+        // Use proxy to avoid CORS
+        fetch(`/api/rpc/dump_consensus_state`).then(r => r.json()).catch(() => null),
       ]);
 
       const roundState = cs?.round_state ?? {};
@@ -53,8 +54,8 @@ function ConsensusPage() {
         net,
         cs,
         roundState,
-        height,
-        round,
+        height: height || "—",
+        round: round || "—",
         step: step || "0",
         dumpData: dumpRes?.result?.round_state,
         validators: vals?.validators ?? [],
@@ -85,9 +86,9 @@ function ConsensusPage() {
 
   const dumpValidators = data?.dumpData?.validators?.validators || [];
   const currentVoteSet = roundState?.height_vote_set?.[0];
-  const prevotes = currentVoteSet?.prevotes || [];
-  const precommits = currentVoteSet?.precommits || [];
-  const proposerIndex = roundState?.proposer?.index ?? 0;
+  const prevotes: string[] = currentVoteSet?.prevotes || [];
+  const precommits: string[] = currentVoteSet?.precommits || [];
+  const proposerIndex = Number(roundState?.proposer?.index ?? 0);
 
   const activePrevotes = prevotes.filter((v: string) => v?.toLowerCase() !== "nil-vote").length;
   const activePrecommits = precommits.filter((v: string) => v?.toLowerCase() !== "nil-vote").length;
@@ -105,21 +106,11 @@ function ConsensusPage() {
 
   // Calculate onboard rate
   const onboardRate = useMemo(() => {
-    let maxRate = 0;
-    const voteSets = roundState?.height_vote_set || [];
-    for (const voteSet of voteSets) {
-      const bitArray = voteSet.prevotes_bit_array || "";
-      const match = bitArray.match(/(\d+)\/(\d+)/);
-      if (match) {
-        const voted = parseInt(match[1]);
-        const tot = parseInt(match[2]);
-        if (tot > 0) maxRate = Math.max(maxRate, (voted / tot) * 100);
-      }
-    }
-    return totalValidators > 0 ? Math.round((activePrevotes / totalValidators) * 100) : Math.round(maxRate);
-  }, [roundState, activePrevotes, totalValidators]);
+    if (totalValidators <= 0) return 0;
+    return Math.round((activePrevotes / totalValidators) * 100);
+  }, [activePrevotes, totalValidators]);
 
-  // Vote history for chart - FIXED: use useEffect instead of useMemo
+  // Vote history - useEffect for side effect
   useEffect(() => {
     if (totalValidators > 0) {
       const timeStr = new Date().toLocaleTimeString();
@@ -135,13 +126,14 @@ function ConsensusPage() {
     }
   }, [activePrevotes, totalValidators]);
 
-  const voteChartData = voteHistory.map(h => ({
+  const voteChartData = useMemo(() => voteHistory.map(h => ({
     time: h.time,
     voted: h.voted,
     missed: h.total - h.voted,
-  }));
+  })), [voteHistory]);
 
   const votingPowerData = useMemo(() => {
+    if (!dumpValidators.length) return [];
     const top = dumpValidators.slice(0, 10).map((v: any) => ({
       name: validatorMap.get(v?.pub_key?.value) || v?.address?.slice(0, 10) || "Unknown",
       power: parseInt(v?.voting_power || "0"),
@@ -151,12 +143,12 @@ function ConsensusPage() {
     return top;
   }, [dumpValidators, validatorMap]);
 
-  const stepDistribution = [
+  const stepDistribution = useMemo(() => [
     { name: "Prevotes", value: activePrevotes, fill: "#F59E0B" },
-    { name: "Missed Prev.", value: totalValidators - activePrevotes, fill: "#EF4444" },
+    { name: "Missed Prev.", value: Math.max(0, totalValidators - activePrevotes), fill: "#EF4444" },
     { name: "Precommits", value: activePrecommits, fill: "#10B981" },
-    { name: "Missed Precom.", value: totalValidators - activePrecommits, fill: "#EF4444" },
-  ];
+    { name: "Missed Precom.", value: Math.max(0, totalValidators - activePrecommits), fill: "#EF4444" },
+  ], [activePrevotes, activePrecommits, totalValidators]);
 
   return (
     <div className="space-y-6 pb-8">
@@ -216,44 +208,52 @@ function ConsensusPage() {
         <Card>
           <SectionTitle title="Vote History" sub="Last 20 updates" icon={<TrendingUp className="w-5 h-5 text-blue-400" />} />
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={voteChartData}>
-                <defs>
-                  <linearGradient id="votedGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="missedGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
-                <Legend />
-                <Area type="monotone" dataKey="voted" stroke="#10b981" fill="url(#votedGrad)" name="Voted" />
-                <Area type="monotone" dataKey="missed" stroke="#ef4444" fill="url(#missedGrad)" name="Missed" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {voteChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={voteChartData}>
+                  <defs>
+                    <linearGradient id="votedGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="missedGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                  <Legend />
+                  <Area type="monotone" dataKey="voted" stroke="#10b981" fill="url(#votedGrad)" name="Voted" />
+                  <Area type="monotone" dataKey="missed" stroke="#ef4444" fill="url(#missedGrad)" name="Missed" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Waiting for data...</div>
+            )}
           </div>
         </Card>
 
         <Card>
           <SectionTitle title="Top Validators by Power" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={votingPowerData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={10} />
-                <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} width={70} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
-                <Bar dataKey="power" radius={[0, 4, 4, 0]}>
-                  {votingPowerData.map((_, i) => (<Cell key={i} fill={COLORS[i % COLORS.length]} />))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {votingPowerData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={votingPowerData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={10} />
+                  <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} width={70} />
+                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                  <Bar dataKey="power" radius={[0, 4, 4, 0]}>
+                    {votingPowerData.map((_, i) => (<Cell key={i} fill={COLORS[i % COLORS.length]} />))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">No validator data</div>
+            )}
           </div>
         </Card>
       </div>
@@ -275,7 +275,6 @@ function ConsensusPage() {
           </div>
         </Card>
 
-        {/* Live Voting Status */}
         <Card>
           <SectionTitle title="Live Voting Status" icon={<Activity className="w-5 h-5 text-emerald-400" />} />
           <div className="space-y-4 mt-2">
