@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos, formatQIE, shorten, evmRpc } from "@/lib/api";
+import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
 import { NETWORK } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
@@ -16,13 +16,37 @@ export const Route = createFileRoute("/staking/$validator")({
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#F59E0B", "#10B981"];
 
-function pubKeyToHex(pubKeyBase64: string): string {
+// Helper: Get account & hex address from validator delegations
+async function fetchValidatorAddresses(operatorAddr: string) {
   try {
-    const bytes = Uint8Array.from(atob(pubKeyBase64), c => c.charCodeAt(0));
-    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-    return hex.toUpperCase();
+    // Get first delegator (usually self-delegation)
+    const delRes = await fetch(
+      `${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations?pagination.limit=1`
+    ).then(r => r.json());
+    
+    const delegatorAddr = delRes?.delegation_responses?.[0]?.delegation?.delegator_address;
+    if (!delegatorAddr) return { accountAddr: "", hexAddr: "" };
+
+    // Get account info for pub_key
+    const accRes = await fetch(
+      `${NETWORK.rest}/cosmos/auth/v1beta1/accounts/${delegatorAddr}`
+    ).then(r => r.json());
+    
+    const pubKeyBase64 = accRes?.account?.base_account?.pub_key?.key;
+    if (!pubKeyBase64) return { accountAddr: delegatorAddr, hexAddr: "" };
+
+    // Convert pub_key to bytes
+    const pubKeyBytes = Uint8Array.from(atob(pubKeyBase64), c => c.charCodeAt(0));
+    
+    // For secp256k1 uncompressed (65 bytes, starts with 04), remove prefix
+    const rawPubKey = pubKeyBytes[0] === 0x04 ? pubKeyBytes.slice(1) : pubKeyBytes;
+    
+    // Simple hex representation (full pubkey hex)
+    const hexAddr = Array.from(pubKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+
+    return { accountAddr: delegatorAddr, hexAddr };
   } catch {
-    return "";
+    return { accountAddr: "", hexAddr: "" };
   }
 }
 
@@ -34,13 +58,13 @@ function ValidatorDetail() {
     queryKey: ["validator-detail", validator],
     refetchInterval: 15_000,
     queryFn: async () => {
-      const [v, pool, vals, signingInfo, validatorSet] = await Promise.all([
+      const [v, pool, vals, signingInfo, validatorSet, addresses] = await Promise.all([
         cosmos.validatorByAddr(validator).catch(() => null),
         cosmos.stakingPool(),
         cosmos.validators(),
         cosmos.signingInfos().catch(() => ({ info: [] })),
-        fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/validatorsets/latest`)
-          .then(r => r.json()).catch(() => ({ validators: [] })),
+        fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/validatorsets/latest`).then(r => r.json()).catch(() => ({ validators: [] })),
+        fetchValidatorAddresses(validator),
       ]);
 
       const allVals = vals?.validators ?? [];
@@ -56,33 +80,15 @@ function ValidatorDetail() {
       const operatorAddr = v?.operator_address ?? validator;
       const consensusPubkeyBase64 = v?.consensus_pubkey?.key ?? "";
 
-      // Find validator in validatorset by pubkey
+      // Find validator in validatorset
       const vsValidator = (validatorSet?.validators ?? []).find(
         (sv: any) => sv.pub_key?.key === consensusPubkeyBase64
       );
-
       const signerAddr = vsValidator?.address ?? "";
-      const consensusHexFromVS = vsValidator?.pub_key?.key ? pubKeyToHex(vsValidator.pub_key.key) : "";
 
-      // Get account address - fetch from auth
-      let accountAddr = "";
-      let hexAddr = "";
-      try {
-        // Try to derive account from operator by replacing prefix
-        const maybeAccount = operatorAddr.replace("qievaloper", "qie");
-        const accRes = await fetch(`${NETWORK.rest}/cosmos/auth/v1beta1/accounts/${maybeAccount}`)
-          .then(r => r.json()).catch(() => null);
-        if (accRes?.account?.base_account?.address) {
-          accountAddr = accRes.account.base_account.address;
-          // Hex address from pub_key
-          const pubKeyHex = accRes.account.base_account.pub_key?.key;
-          if (pubKeyHex) {
-            // For ethermint, EVM hex address is derived differently
-            // Use the pub_key hex as reference, but real EVM addr needs keccak256
-            hexAddr = pubKeyToHex(pubKeyHex);
-          }
-        }
-      } catch {}
+      // From delegations
+      const accountAddr = addresses?.accountAddr ?? "";
+      const hexAddr = addresses?.hexAddr ?? "";
 
       // Validator info
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
@@ -107,7 +113,7 @@ function ValidatorDetail() {
         unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
         selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators, allVals,
         operatorAddr, accountAddr, signerAddr, hexAddr,
-        consensusPubkeyBase64, consensusHexFromVS,
+        consensusPubkeyBase64,
       };
     },
   });
@@ -135,7 +141,7 @@ function ValidatorDetail() {
     unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
     selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators,
     operatorAddr, accountAddr, signerAddr, hexAddr,
-    consensusPubkeyBase64, consensusHexFromVS,
+    consensusPubkeyBase64,
   } = data;
 
   const identity = v?.description?.identity;
@@ -160,6 +166,7 @@ function ValidatorDetail() {
 
   return (
     <div className="space-y-6 pb-8">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Link to="/staking" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-violet-500 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
@@ -180,6 +187,7 @@ function ValidatorDetail() {
         </div>
       </div>
 
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="Total Bonded" value={formatQIE(v?.tokens ?? "0", 1)} sub={`${vp.toFixed(2)}% of total`} />
         <InfoCard icon={<User className="w-4 h-4 text-emerald-400" />} label="Self Bonded" value={formatQIE(selfDelegationAmount, 1)} sub={`${selfDelegationPct.toFixed(2)}%`} />
@@ -187,6 +195,7 @@ function ValidatorDetail() {
         <InfoCard icon={<TrendingUp className="w-4 h-4 text-cyan-400" />} label="Annual Profit" value={vp > 0 ? `${(vp * (1 - comm)).toFixed(2)}%` : "—"} />
       </div>
 
+      {/* User Stats */}
       {cw.address && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="My Stake" value={`${formatQIE(myStake, 4)} ${NETWORK.symbol}`} />
@@ -195,6 +204,7 @@ function ValidatorDetail() {
         </div>
       )}
 
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <SectionTitle title="Voting Power Composition" />
@@ -234,12 +244,14 @@ function ValidatorDetail() {
         </Card>
       </div>
 
+      {/* Commissions & Rewards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <InfoCard icon={<Coins className="w-4 h-4 text-amber-400" />} label="Commissions" value={`${formatQIE(commissionPool, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Gift className="w-4 h-4 text-emerald-400" />} label="Outstanding Rewards" value={`${formatQIE(outstandingRewards, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Unlock className="w-4 h-4 text-violet-400" />} label="Min Self Delegation" value={minSelfDelegation !== "0" ? `${formatQIE(minSelfDelegation, 0)} ${NETWORK.symbol}` : "—"} />
       </div>
 
+      {/* Top 10 */}
       <Card>
         <SectionTitle title="Top 10 Validators by Voting Power" />
         <div className="space-y-2 mt-2">
@@ -255,6 +267,7 @@ function ValidatorDetail() {
         </div>
       </Card>
 
+      {/* Status */}
       <Card>
         <SectionTitle title="Validator Status" icon={<Shield className="w-5 h-5 text-violet-500" />} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
@@ -269,6 +282,7 @@ function ValidatorDetail() {
         </div>
       </Card>
 
+      {/* About */}
       {v?.description && (
         <Card>
           <SectionTitle title="About Us" icon={<FileText className="w-5 h-5 text-cyan-500" />} />
@@ -280,17 +294,19 @@ function ValidatorDetail() {
         </Card>
       )}
 
+      {/* Addresses */}
       <Card>
         <SectionTitle title="Addresses" icon={<Key className="w-5 h-5 text-amber-500" />} />
         <div className="space-y-3 mt-2">
-          <DetailRow label="Account Address" value={accountAddr || "—"} mono copy />
+          <DetailRow label="Account Address" value={accountAddr} mono copy />
           <DetailRow label="Operator Address" value={operatorAddr} mono copy />
-          <DetailRow label="Hex Address" value={hexAddr || "—"} mono copy />
-          <DetailRow label="Signer Address" value={signerAddr || "—"} mono copy />
+          <DetailRow label="Hex Address" value={hexAddr} mono copy />
+          <DetailRow label="Signer Address" value={signerAddr} mono copy />
           <DetailRow label="Consensus Public Key" value={consensusPubkeyBase64} mono copy />
         </div>
       </Card>
 
+      {/* Commission */}
       <Card>
         <SectionTitle title="Commission" sub={commissionUpdateTime ? `Updated at ${dayjs(commissionUpdateTime).format("YYYY-MM-DD HH:mm:ss")}` : ""} icon={<Percent className="w-5 h-5 text-amber-500" />} />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-2">
