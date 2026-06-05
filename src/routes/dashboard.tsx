@@ -422,33 +422,54 @@ function DashboardPage() {
       </div>
 
       {/* Application Versions - PALING BAWAH */}
-      <Card>
-        <SectionTitle title="Application Versions" sub="Node software info" icon={<Package className="w-5 h-5 text-violet-400" />} />
-        {appVersion.data ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mt-2">
-            <VersionRow icon={<Box className="w-3.5 h-3.5 text-emerald-400" />} label="App Name" value={appVersion.data.appName} />
-            <VersionRow icon={<Cpu className="w-3.5 h-3.5 text-blue-400" />} label="Name" value={appVersion.data.name} />
-            <VersionRow icon={<Package className="w-3.5 h-3.5 text-violet-400" />} label="Version" value={appVersion.data.version} />
-            <VersionRow icon={<GitCommit className="w-3.5 h-3.5 text-amber-400" />} label="Git Commit" value={appVersion.data.gitCommit} mono />
-            <VersionRow icon={<Zap className="w-3.5 h-3.5 text-cyan-400" />} label="Go Version" value={appVersion.data.goVersion} />
-            <VersionRow icon={<Layers className="w-3.5 h-3.5 text-pink-400" />} label="Cosmos SDK" value={appVersion.data.cosmosSdkVersion} />
-            {appVersion.data.buildTags && appVersion.data.buildTags !== "—" && (
-              <VersionRow icon={<Sparkles className="w-3.5 h-3.5 text-rose-400" />} label="Build Tags" value={appVersion.data.buildTags} />
+      {appVersion.data && (
+        <Card>
+          <SectionTitle title="Application Versions" sub="Node software information" icon={<Package className="w-5 h-5 text-violet-400" />} />
+          <div className="space-y-3 mt-2">
+            {/* Main info rows */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <VersionRow icon={<Box className="w-3.5 h-3.5 text-emerald-400" />} label="App Name" value={appVersion.data.appName} />
+              <VersionRow icon={<Cpu className="w-3.5 h-3.5 text-blue-400" />} label="Name" value={appVersion.data.name} />
+              <VersionRow icon={<Package className="w-3.5 h-3.5 text-violet-400" />} label="Version" value={appVersion.data.version} />
+              <VersionRow icon={<GitCommit className="w-3.5 h-3.5 text-amber-400" />} label="Git Commit" value={appVersion.data.gitCommit} mono />
+              <VersionRow icon={<Zap className="w-3.5 h-3.5 text-cyan-400" />} label="Go Version" value={appVersion.data.goVersion} />
+              <VersionRow icon={<Layers className="w-3.5 h-3.5 text-pink-400" />} label="Cosmos SDK" value={appVersion.data.cosmosSdkVersion} />
+              {appVersion.data.buildTags && appVersion.data.buildTags !== "—" && (
+                <VersionRow icon={<Sparkles className="w-3.5 h-3.5 text-rose-400" />} label="Build Tags" value={appVersion.data.buildTags} />
+              )}
+            </div>
+
+            {/* Build Deps - Scrollable */}
+            {appVersion.data.buildDeps && appVersion.data.buildDeps.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <GitCommit className="w-3.5 h-3.5 text-amber-400" /> Build Dependencies
+                  <span className="text-[10px] opacity-60">({appVersion.data.buildDeps.length})</span>
+                </p>
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                  {appVersion.data.buildDeps.map((dep: any, i: number) => {
+                    const path = typeof dep === "string" ? dep : dep.path ?? dep.name ?? "";
+                    const version = typeof dep === "object" ? dep.version ?? dep.sum ?? "" : "";
+                    return (
+                      <div key={i} className="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
+                        <span className="font-mono text-muted-foreground truncate mr-2">{path}</span>
+                        {version && <span className="text-muted-foreground/50 shrink-0 font-mono">{version}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
-        ) : appVersion.isLoading ? (
-          <div className="text-sm text-muted-foreground p-6 text-center">Loading versions...</div>
-        ) : (
-          <div className="text-sm text-muted-foreground p-6 text-center">Unable to fetch version info</div>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
 
 function VersionRow({ icon, label, value, mono }: { icon: React.ReactNode; label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-card hover:border-violet-500/20 transition-colors">
+    <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
       <div className="flex items-center gap-2">
         {icon}
         <span className="text-[11px] text-muted-foreground">{label}</span>
