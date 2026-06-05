@@ -8,8 +8,10 @@ import { useWallet } from "@/lib/wallet";
 import { voteProposal } from "@/lib/wallet-tx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useState } from "react";
-import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Users, Vote, Copy, Calendar } from "lucide-react";
+import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Users, Vote, Calendar } from "lucide-react";
 import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+dayjs.extend(relativeTime);
 
 export const Route = createFileRoute("/governance/$proposalId")({
   head: ({ params }) => ({ meta: [{ title: `Proposal #${params.proposalId} — QIE Explorer` }] }),
@@ -31,6 +33,19 @@ const OPTIONS = [
   { id: 4, label: "No With Veto", variant: "warning" as const, color: "bg-amber-500/10 border-amber-500/30 text-amber-400" },
 ];
 
+function getProposalTitle(content: any): string {
+  if (!content) return "Untitled Proposal";
+  const type = content["@type"] || "";
+  if (type.includes("MsgUpdateParams")) return "Update Params";
+  if (type.includes("MsgSoftwareUpgrade")) return "Software Upgrade";
+  if (type.includes("MsgCancelUpgrade")) return "Cancel Upgrade";
+  if (type.includes("CommunityPoolSpend")) return "Community Pool Spend";
+  if (type.includes("ParameterChange")) return "Parameter Change";
+  if (type.includes("Text")) return "Text Proposal";
+  const parts = type.split(".");
+  return parts[parts.length - 1] || "Untitled Proposal";
+}
+
 function ProposalDetail() {
   const { proposalId } = Route.useParams();
   const { cosmos: w } = useWallet();
@@ -47,7 +62,6 @@ function ProposalDetail() {
       const p = proposals?.proposals?.find((x: any) => String(x.proposal_id) === proposalId);
       if (!p) throw new Error("Proposal not found");
 
-      // Fetch votes
       let votes: any[] = [];
       try {
         const votesRes = await fetch(
@@ -56,7 +70,6 @@ function ProposalDetail() {
         votes = votesRes?.votes ?? [];
       } catch {}
 
-      // Fetch tally
       let tally = p.final_tally_result;
       try {
         const tallyRes = await fetch(
@@ -77,12 +90,9 @@ function ProposalDetail() {
   const tally = data?.tally ?? {};
   const st = STATUS[p?.status] ?? { label: p?.status ?? "Unknown", variant: "default" as const, icon: FileText };
   const StatusIcon = st.icon;
-  const title = p?.content?.title ?? p?.title ?? "Untitled Proposal";
-  const description = p?.content?.description ?? p?.summary ?? "";
+  const title = getProposalTitle(p?.content);
   const params = p?.content;
-
   const totalVotes = Number(tally.yes ?? 0) + Number(tally.no ?? 0) + Number(tally.no_with_veto ?? 0) + Number(tally.abstain ?? 0);
-  const turnout = data?.proposal?.total_deposit?.length ? "—" : totalVotes > 0 ? ((totalVotes / Number(p?.total_deposit?.[0]?.amount ?? 1)) * 100).toFixed(2) : "0";
 
   function openVote() {
     if (!w.address) return toast.error("Connect a Cosmos wallet first");
@@ -106,12 +116,10 @@ function ProposalDetail() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Back */}
       <Link to="/governance" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-violet-500 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Back to Governance
       </Link>
 
-      {/* Header */}
       <Card>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
@@ -134,7 +142,9 @@ function ProposalDetail() {
                 <Pill variant={st.variant}>{st.label}</Pill>
               </div>
               <h1 className="text-xl font-bold">{title}</h1>
-              <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">{description}</p>
+              {p?.content?.["@type"] && (
+                <p className="text-xs text-muted-foreground mt-1 font-mono">{p.content["@type"]}</p>
+              )}
             </div>
           </div>
           {p?.status === "PROPOSAL_STATUS_VOTING_PERIOD" && (
@@ -146,16 +156,16 @@ function ProposalDetail() {
       </Card>
 
       {/* Params */}
-      {params && typeof params === "object" && Object.keys(params).filter(k => k !== "title" && k !== "description" && k !== "@type").length > 0 && (
+      {params && typeof params === "object" && Object.keys(params).filter(k => k !== "@type").length > 0 && (
         <Card>
           <SectionTitle title="Parameters" icon={<FileText className="w-5 h-5 text-violet-500" />} />
-          <div className="space-y-2 mt-2">
+          <div className="space-y-2 mt-2 max-h-96 overflow-y-auto">
             {Object.entries(params)
-              .filter(([k]) => k !== "title" && k !== "description" && k !== "@type")
+              .filter(([k]) => k !== "@type")
               .map(([key, value]: any) => (
-                <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-2 border-b border-border/30 last:border-0">
-                  <dt className="text-xs text-muted-foreground uppercase tracking-wider sm:w-40 shrink-0">{key}</dt>
-                  <dd className="text-sm font-mono break-all">
+                <div key={key} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3 py-2 border-b border-border/30 last:border-0">
+                  <dt className="text-xs text-muted-foreground uppercase tracking-wider sm:w-40 shrink-0 mt-0.5">{key}</dt>
+                  <dd className="text-sm font-mono break-all bg-muted/30 rounded-lg p-2 flex-1 text-xs max-h-32 overflow-y-auto">
                     {typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}
                   </dd>
                 </div>
@@ -166,7 +176,7 @@ function ProposalDetail() {
 
       {/* Tally */}
       <Card>
-        <SectionTitle title="Tally" sub={`Turnout: ${turnout}%`} icon={<Users className="w-5 h-5 text-amber-500" />} />
+        <SectionTitle title="Tally" icon={<Users className="w-5 h-5 text-amber-500" />} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
           {[
             { label: "Yes", value: tally.yes, variant: "success", color: "text-emerald-400" },
@@ -190,18 +200,10 @@ function ProposalDetail() {
       <Card>
         <SectionTitle title="Timeline" icon={<Calendar className="w-5 h-5 text-cyan-500" />} />
         <div className="space-y-3 mt-2">
-          {p?.submit_time && (
-            <TimelineItem label="Submitted at" time={p.submit_time} />
-          )}
-          {p?.deposit_end_time && (
-            <TimelineItem label="Deposited at" time={p.deposit_end_time} />
-          )}
-          {p?.voting_start_time && (
-            <TimelineItem label="Voting start from" time={p.voting_start_time} />
-          )}
-          {p?.voting_end_time && (
-            <TimelineItem label="Voting end" time={p.voting_end_time} />
-          )}
+          {p?.submit_time && <TimelineItem label="Submitted at" time={p.submit_time} />}
+          {p?.deposit_end_time && <TimelineItem label="Deposited at" time={p.deposit_end_time} />}
+          {p?.voting_start_time && <TimelineItem label="Voting start" time={p.voting_start_time} />}
+          {p?.voting_end_time && <TimelineItem label="Voting end" time={p.voting_end_time} />}
           <TimelineItem label="Current Status" value={st.label} />
         </div>
       </Card>
@@ -224,34 +226,24 @@ function ProposalDetail() {
         </Card>
       )}
 
-      {/* Vote Dialog */}
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
         <DialogContent className="border-border max-w-md">
-          <DialogHeader>
-            <DialogTitle>Vote on #{proposalId}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Vote on #{proposalId}</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="text-sm font-medium">{title}</div>
-            <p className="text-xs text-muted-foreground line-clamp-3">{description}</p>
             <div className="grid grid-cols-2 gap-2 pt-2">
               {OPTIONS.map((o) => (
-                <button
-                  key={o.id}
-                  onClick={() => setOption(o.id as any)}
-                  className={`rounded-xl px-3 py-3 text-sm font-medium transition border ${
-                    option === o.id ? o.color + " border-current" : "border-border/60 hover:bg-muted/30"
-                  }`}
-                >
+                <button key={o.id} onClick={() => setOption(o.id as any)}
+                  className={`rounded-xl px-3 py-3 text-sm font-medium transition border ${option === o.id ? o.color + " border-current" : "border-border/60 hover:bg-muted/30"}`}>
                   {o.label}
                 </button>
               ))}
             </div>
           </div>
           <DialogFooter>
-            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30 transition-colors">Cancel</button>
+            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30">Cancel</button>
             <button onClick={submit} disabled={busy} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-5 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
-              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-              Submit Vote
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Submit Vote
             </button>
           </DialogFooter>
         </DialogContent>
@@ -264,9 +256,8 @@ function TimelineItem({ label, time, value }: { label: string; time?: string; va
   return (
     <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-medium">
-        {time ? dayjs(time).format("YYYY-MM-DD HH:mm") : value}
-        {time && <span className="text-muted-foreground/50 ml-1">· {dayjs(time).fromNow()}</span>}
+      <span className="text-xs font-medium text-right">
+        {time ? <>{dayjs(time).format("YYYY-MM-DD HH:mm")} <span className="text-muted-foreground/50 ml-1">· {dayjs(time).fromNow()}</span></> : value}
       </span>
     </div>
   );
