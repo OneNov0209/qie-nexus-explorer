@@ -18,4 +18,7 @@ export default defineConfig({
       dir: ".vercel/output",
     },
   },
+  build: {
+    outDir: ".vercel/output/dist",
+  },
 });
