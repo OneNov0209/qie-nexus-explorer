@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Activity, Users, Radio, Zap, Clock, Server,
   Wifi, TrendingUp, BarChart3, PieChart, Circle,
@@ -119,11 +119,15 @@ function ConsensusPage() {
     return totalValidators > 0 ? Math.round((activePrevotes / totalValidators) * 100) : Math.round(maxRate);
   }, [roundState, activePrevotes, totalValidators]);
 
-  // Vote history for chart
-  useMemo(() => {
+  // Vote history for chart - FIXED: use useEffect instead of useMemo
+  useEffect(() => {
     if (totalValidators > 0) {
       const timeStr = new Date().toLocaleTimeString();
       setVoteHistory(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.voted === activePrevotes && last.total === totalValidators) {
+          return prev;
+        }
         const newHistory = [...prev, { time: timeStr, voted: activePrevotes, total: totalValidators }];
         if (newHistory.length > 20) newHistory.shift();
         return newHistory;
