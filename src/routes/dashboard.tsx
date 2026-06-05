@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cosmos, evm, evmRpc, formatQIE, hexToNum, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { StatCard, Card, SectionTitle, Loading, Pill } from "@/components/ui/primitives";
-import { Activity, Boxes, Coins, Users, TrendingUp, Layers, Percent, Clock, Zap, Sparkles, ChevronRight } from "lucide-react";
+import { Activity, Boxes, Coins, Users, Layers, Percent, Clock, Zap, Sparkles, ChevronRight, ArrowRightLeft } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import dayjs from "dayjs";
 import { motion } from "framer-motion";
@@ -41,15 +41,16 @@ function useRecentBlocks() {
     queryFn: async () => {
       const latest = await evm.blockNumber();
       if (!latest) return { blocks: [] as any[], latest: 0 };
-      const count = 20;
+      const count = 6;
       const heights = Array.from({ length: count }, (_, i) => latest - i);
-      const blocks = await Promise.all(heights.map((h) => evm.getBlock(h, false).catch(() => null)));
+      const blocks = await Promise.all(
+        heights.map((h) => evm.getBlock(h, true).catch(() => null))
+      );
       return { blocks: blocks.filter(Boolean), latest };
     },
   });
 }
 
-// Custom tooltip
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -66,7 +67,6 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-// Pie colors
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444"];
 
 function DashboardPage() {
@@ -98,7 +98,6 @@ function DashboardPage() {
     time: dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss"),
   }));
 
-  // Pie data
   const bondedNum = Number(bonded) / 1e18;
   const liquidNum = Math.max(0, Number(supplyQ) / 1e18 - bondedNum);
   const pieData = [
@@ -107,11 +106,23 @@ function DashboardPage() {
     { name: "Comm. Pool", value: Number(commPoolQ) / 1e18 },
   ].filter(d => d.value > 0);
 
-  // Validator distribution
   const validatorPie = [
     { name: "Active", value: activeVals },
     { name: "Inactive", value: validators.length - activeVals },
   ].filter(d => d.value > 0);
+
+  // Collect recent transactions from blocks
+  const recentTxs = blocks
+    .flatMap((b: any) => {
+      const h = hexToNum(b.number);
+      const ts = hexToNum(b.timestamp) * 1000;
+      return (b.transactions ?? []).slice(0, 3).map((tx: any) => ({
+        hash: tx.hash ?? tx,
+        block: h,
+        time: ts,
+      }));
+    })
+    .slice(0, 8);
 
   return (
     <div className="space-y-6 pb-8">
@@ -187,17 +198,12 @@ function DashboardPage() {
                       <stop offset="60%" stopColor="#D946EF" stopOpacity={0.15} />
                       <stop offset="100%" stopColor="#D946EF" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="gasGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
-                    </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
                   <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip content={<CustomTooltip />} />
                   <Area type="monotone" dataKey="txs" name="Transactions" stroke="#8B5CF6" strokeWidth={2} fill="url(#txGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff", fill: "#8B5CF6" }} />
-                  <Area type="monotone" dataKey="gasPct" name="Gas Used %" stroke="#06B6D4" strokeWidth={1.5} fill="url(#gasGrad)" dot={false} activeDot={{ r: 3, strokeWidth: 2, stroke: "#fff", fill: "#06B6D4" }} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -210,7 +216,6 @@ function DashboardPage() {
         <Card>
           <SectionTitle title="Network Pulse" sub="Distribution overview" />
           <div className="space-y-4">
-            {/* Staking Pie */}
             <div>
               <p className="text-xs text-muted-foreground mb-1 px-1">Staking</p>
               <div className="h-36">
@@ -234,7 +239,6 @@ function DashboardPage() {
               </div>
             </div>
 
-            {/* Validator Pie */}
             <div>
               <p className="text-xs text-muted-foreground mb-1 px-1">Validators</p>
               <div className="h-36">
@@ -261,48 +265,89 @@ function DashboardPage() {
         </Card>
       </div>
 
-      {/* Latest Blocks */}
-      <Card>
-        <SectionTitle 
-          title="Latest Blocks" 
-          action={
-            <Link to="/blocks" className="text-xs text-primary hover:underline flex items-center gap-1">
-              View all <ChevronRight className="w-3 h-3" />
-            </Link>
-          } 
-        />
-        <div className="divide-y divide-border/50">
-          {blocks.slice(0, 8).map((b: any) => {
-            const h = hexToNum(b.number);
-            return (
-              <Link
-                key={b.hash}
-                to="/blocks/$height"
-                params={{ height: String(h) }}
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center text-xs font-mono font-medium">
+      {/* Latest Blocks + Recent Transactions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Latest Blocks */}
+        <Card>
+          <SectionTitle 
+            title="Latest Blocks" 
+            action={
+              <Link to="/blocks" className="text-xs text-primary hover:underline flex items-center gap-1">
+                View all <ChevronRight className="w-3 h-3" />
+              </Link>
+            } 
+          />
+          <div className="space-y-1 px-2 pb-2">
+            {blocks.slice(0, 6).map((b: any) => {
+              const h = hexToNum(b.number);
+              return (
+                <Link
+                  key={b.hash}
+                  to="/blocks/$height"
+                  params={{ height: String(h) }}
+                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors group"
+                >
+                  <span className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center text-xs font-mono font-medium shrink-0">
                     {h.toLocaleString()}
                   </span>
-                  <div>
-                    <div className="text-xs text-muted-foreground font-mono">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-muted-foreground font-mono truncate">
+                      {shorten(b.hash, 10, 8)}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/60">
                       {dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss")}
                     </div>
-                    <div className="text-[11px] text-muted-foreground/60">{shorten(b.hash, 6, 4)}</div>
                   </div>
-                </div>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {b.transactions?.length ?? 0} txs
-                </span>
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                    {b.transactions?.length ?? 0} txs
+                  </span>
+                </Link>
+              );
+            })}
+            {blocks.length === 0 && (
+              <div className="text-sm text-muted-foreground p-6 text-center">Waiting for blocks...</div>
+            )}
+          </div>
+        </Card>
+
+        {/* Recent Transactions */}
+        <Card>
+          <SectionTitle 
+            title="Recent Transactions" 
+            action={
+              <Link to="/transactions" className="text-xs text-primary hover:underline flex items-center gap-1">
+                View all <ChevronRight className="w-3 h-3" />
               </Link>
-            );
-          })}
-          {blocks.length === 0 && (
-            <div className="text-sm text-muted-foreground p-6 text-center">Waiting for blocks...</div>
-          )}
-        </div>
-      </Card>
+            } 
+          />
+          <div className="space-y-1 px-2 pb-2">
+            {recentTxs.length > 0 ? (
+              recentTxs.map((tx: any, i: number) => (
+                <Link
+                  key={`${tx.hash}-${i}`}
+                  to="/tx/$hash"
+                  params={{ hash: String(tx.hash) }}
+                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors group"
+                >
+                  <span className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 grid place-items-center shrink-0">
+                    <ArrowRightLeft className="w-4 h-4 text-cyan-400" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-muted-foreground font-mono truncate">
+                      {shorten(String(tx.hash), 10, 8)}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/60">
+                      Block #{tx.block.toLocaleString()} · {dayjs(tx.time).format("HH:mm:ss")}
+                    </div>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground p-6 text-center">No recent transactions</div>
+            )}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
