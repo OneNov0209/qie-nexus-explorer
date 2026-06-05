@@ -12,11 +12,11 @@ export function WalletButton() {
   const { evm, cosmos, disconnectEvm, disconnectCosmos } = useWallet();
   const connected = evm.address || cosmos.address;
 
-  async function tryConnect(kind: "metamask" | "keplr" | "leap") {
+  async function tryConnect(kind: "metamask" | "keplr") {
     try {
       if (kind === "metamask") await connectMetaMask();
-      else await connectKeplr(kind);
-      toast.success(`Connected to ${kind}`);
+      else await connectKeplr("keplr");
+      toast.success(`Connected to ${kind === "metamask" ? "MetaMask" : "Keplr"}`);
       setOpen(false);
     } catch (e: any) {
       toast.error(e?.message ?? "Connection failed");
@@ -39,30 +39,43 @@ export function WalletButton() {
         <div className="flex items-center gap-2">
           {evm.address && (
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 text-sm">
-              <img src={WALLET_LOGOS.metamask} alt="" className="w-4 h-4" />
+              <img src={WALLET_LOGOS.metamask} alt="MetaMask" className="w-4 h-4" />
               <span className="font-mono">{shorten(evm.address)}</span>
-              <span className="text-muted-foreground">{evm.balance} {NETWORK.symbol}</span>
+              {evm.balance && (
+                <span className="text-muted-foreground">{Number(evm.balance).toFixed(4)} {NETWORK.symbol}</span>
+              )}
               <button onClick={() => copy(evm.address!)} className="text-muted-foreground hover:text-white">
                 {copied === evm.address ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
-              <button onClick={disconnectEvm} className="text-muted-foreground hover:text-destructive"><LogOut className="w-3.5 h-3.5" /></button>
+              <button onClick={disconnectEvm} className="text-muted-foreground hover:text-destructive">
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
           {cosmos.address && (
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 text-sm">
-              <img src={WALLET_LOGOS.keplr} alt="" className="w-4 h-4" />
+              <img src={WALLET_LOGOS.keplr} alt="Keplr" className="w-4 h-4" />
               <span className="font-mono">{shorten(cosmos.address)}</span>
+              {cosmos.balance && (
+                <span className="text-muted-foreground">{cosmos.balance} {NETWORK.symbol}</span>
+              )}
               <button onClick={() => copy(cosmos.address!)} className="text-muted-foreground hover:text-white">
                 {copied === cosmos.address ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
-              <button onClick={disconnectCosmos} className="text-muted-foreground hover:text-destructive"><LogOut className="w-3.5 h-3.5" /></button>
+              <button onClick={disconnectCosmos} className="text-muted-foreground hover:text-destructive">
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
           {!evm.address && (
-            <button onClick={() => setOpen(true)} className="glass rounded-xl px-3 py-2 text-sm hover:bg-white/10">+ EVM</button>
+            <button onClick={() => setOpen(true)} className="glass rounded-xl px-3 py-2 text-sm hover:bg-white/10">
+              + EVM
+            </button>
           )}
           {!cosmos.address && (
-            <button onClick={() => setOpen(true)} className="glass rounded-xl px-3 py-2 text-sm hover:bg-white/10">+ Cosmos</button>
+            <button onClick={() => setOpen(true)} className="glass rounded-xl px-3 py-2 text-sm hover:bg-white/10">
+              + Cosmos
+            </button>
           )}
         </div>
       )}
@@ -80,15 +93,21 @@ export function WalletButton() {
           </DialogHeader>
 
           <div className="space-y-2 pt-2">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1">EVM Wallets</div>
-            <WalletRow logo={WALLET_LOGOS.metamask} name="MetaMask" sub="Auto-adds QIE Network" onClick={() => tryConnect("metamask")} />
-            <WalletRow logo={WALLET_LOGOS.metamask} name="Rabby Wallet" sub="EVM compatible" onClick={() => tryConnect("metamask")} />
-            <WalletRow logo={WALLET_LOGOS.metamask} name="OKX Wallet" sub="EVM compatible" onClick={() => tryConnect("metamask")} />
+            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1">EVM</div>
+            <WalletRow
+              logo={WALLET_LOGOS.metamask}
+              name="MetaMask"
+              sub="Connect your MetaMask wallet"
+              onClick={() => tryConnect("metamask")}
+            />
 
-            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1 pt-3">Cosmos Wallets</div>
-            <WalletRow logo={WALLET_LOGOS.keplr} name="Keplr" sub="Recommended" onClick={() => tryConnect("keplr")} />
-            <WalletRow logo={WALLET_LOGOS.keplr} name="Leap Wallet" sub="Cosmos native" onClick={() => tryConnect("leap")} />
-            <WalletRow logo={WALLET_LOGOS.keplr} name="Cosmostation" sub="Cosmos native" onClick={() => tryConnect("keplr")} />
+            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1 pt-3">Cosmos</div>
+            <WalletRow
+              logo={WALLET_LOGOS.keplr}
+              name="Keplr"
+              sub="Connect your Keplr wallet"
+              onClick={() => tryConnect("keplr")}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -98,7 +117,10 @@ export function WalletButton() {
 
 function WalletRow({ logo, name, sub, onClick }: { logo: string; name: string; sub: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="w-full flex items-center gap-3 p-3 rounded-xl glass hover:bg-white/10 transition group">
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 p-3 rounded-xl glass hover:bg-white/10 transition group"
+    >
       <img src={logo} alt={name} className="w-8 h-8" />
       <div className="text-left flex-1">
         <div className="font-medium text-sm">{name}</div>
