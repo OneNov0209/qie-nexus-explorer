@@ -5,7 +5,8 @@
  * vote) are ONLY available via Cosmos wallet (QIE Wallet Cosmos mode / Keplr).
  * MetaMask & QIE Wallet EVM mode are for EVM transfers only - NOT for staking.
  *
- * Uses offline signer + REST API broadcast via proxy (no WebSocket needed, no CORS).
+ * Uses offline signer (signAmino) + REST API broadcast via proxy.
+ * No WebSocket needed, no CORS issues.
  */
 import { NETWORK } from "@/data/network";
 
@@ -30,16 +31,25 @@ export function toMicro(qie: string | number): string {
 
 async function getSignerAndAddress(): Promise<{ signer: any; address: string }> {
   const w = window as any;
-  // Support QIE Wallet (if it exposes keplr API), Keplr, Leap
-  const provider = w.qie || w.keplr || w.leap;
-  if (!provider) throw new Error("No Cosmos wallet detected. Please install Keplr for staking operations.");
+  // QIE Wallet exposes keplr API for Cosmos operations, qie API for EVM
+  const keplrApi = w.keplr;
+  const qieApi = w.qie;
 
-  await provider.enable(NETWORK.cosmosChainId);
+  if (!keplrApi && !qieApi) {
+    throw new Error("No Cosmos wallet detected. Please install QIE Wallet or Keplr for staking.");
+  }
 
-  // Use Amino signer for Ethermint compatibility
-  const signer = provider.getOfflineSignerOnlyAmino
-    ? provider.getOfflineSignerOnlyAmino(NETWORK.cosmosChainId)
-    : provider.getOfflineSigner(NETWORK.cosmosChainId);
+  // Enable chain - QIE Wallet uses its own enable, Keplr uses keplr.enable
+  if (qieApi) {
+    await qieApi.enable(NETWORK.cosmosChainId);
+  } else if (keplrApi) {
+    await keplrApi.enable(NETWORK.cosmosChainId);
+  }
+
+  // Use keplr API for signing (QIE Wallet mirrors keplr API)
+  const signer = keplrApi.getOfflineSignerOnlyAmino
+    ? keplrApi.getOfflineSignerOnlyAmino(NETWORK.cosmosChainId)
+    : keplrApi.getOfflineSigner(NETWORK.cosmosChainId);
 
   const accounts = await signer.getAccounts();
   if (!accounts[0]) throw new Error("No account found in wallet");
@@ -58,23 +68,23 @@ async function signAndBroadcast(
   memo: string,
   signer: any
 ): Promise<DeliverTxResponse> {
-  // Fetch account info for sequence
+  // Fetch account info for sequence number
   const accRes = await fetch(`/api/rest/cosmos/auth/v1beta1/accounts/${address}`).then(r => r.json());
   const baseAccount = accRes?.account?.base_account || accRes?.account;
-  const accountNumber = Number(baseAccount?.account_number || 0);
-  const sequence = Number(baseAccount?.sequence || 0);
+  const accountNumber = String(baseAccount?.account_number || 0);
+  const sequence = String(baseAccount?.sequence || 0);
 
-  // Build sign doc for Amino signing
+  // Build sign doc
   const signDoc = {
     chain_id: NETWORK.cosmosChainId,
-    account_number: String(accountNumber),
-    sequence: String(sequence),
+    account_number: accountNumber,
+    sequence: sequence,
     fee: DEFAULT_FEE,
     msgs: messages,
     memo: memo,
   };
 
-  // Sign with wallet
+  // Sign with wallet (Amino signing for Ethermint compatibility)
   const signResponse = await signer.signAmino(address, signDoc);
 
   // Build signed transaction
@@ -108,12 +118,12 @@ async function signAndBroadcast(
 
   const data = await broadcastRes.json();
 
-  // Check for errors
+  // Check for transaction errors
   if (data?.tx_response?.code !== undefined && data.tx_response.code !== 0) {
     throw new Error(data.tx_response.raw_log || "Transaction failed");
   }
 
-  // Check for broadcast error
+  // Check for broadcast errors
   if (data?.code && data?.code !== 0) {
     throw new Error(data?.message || "Broadcast failed");
   }
@@ -130,7 +140,7 @@ async function signAndBroadcast(
 
 /**
  * Delegate QIE tokens to a validator
- * Requires: Keplr wallet connected
+ * Requires: QIE Wallet (Cosmos mode) or Keplr connected
  */
 export async function delegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
   const { signer, address } = await getSignerAndAddress();
@@ -147,7 +157,7 @@ export async function delegate(validator: string, qieAmount: string): Promise<De
 
 /**
  * Undelegate QIE tokens from a validator
- * Requires: Keplr wallet connected
+ * Requires: QIE Wallet (Cosmos mode) or Keplr connected
  */
 export async function undelegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
   const { signer, address } = await getSignerAndAddress();
@@ -164,7 +174,7 @@ export async function undelegate(validator: string, qieAmount: string): Promise<
 
 /**
  * Redelegate QIE tokens from one validator to another
- * Requires: Keplr wallet connected
+ * Requires: QIE Wallet (Cosmos mode) or Keplr connected
  */
 export async function redelegate(srcValidator: string, dstValidator: string, qieAmount: string): Promise<DeliverTxResponse> {
   const { signer, address } = await getSignerAndAddress();
@@ -181,8 +191,8 @@ export async function redelegate(srcValidator: string, dstValidator: string, qie
 }
 
 /**
- * Withdraw all staking rewards
- * Requires: Keplr wallet connected
+ * Withdraw all staking rewards from given validators
+ * Requires: QIE Wallet (Cosmos mode) or Keplr connected
  */
 export async function withdrawAllRewards(validators: string[]): Promise<DeliverTxResponse> {
   if (!validators.length) throw new Error("No validators with rewards");
@@ -199,7 +209,7 @@ export async function withdrawAllRewards(validators: string[]): Promise<DeliverT
 
 /**
  * Vote on a governance proposal
- * Requires: Keplr wallet connected
+ * Requires: QIE Wallet (Cosmos mode) or Keplr connected
  * @param option 1=YES, 2=ABSTAIN, 3=NO, 4=NO_WITH_VETO
  */
 export async function voteProposal(proposalId: string | number, option: 1 | 2 | 3 | 4): Promise<DeliverTxResponse> {
