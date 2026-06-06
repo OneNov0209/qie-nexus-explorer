@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { evm, hexToNum, formatWei, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
-import { ArrowLeft, Boxes, Clock, Database, Hash, User, Fuel, FileText, ArrowRightLeft, Coins, Gauge, HardDrive } from "lucide-react";
+import { ArrowLeft, Boxes, Clock, Database, Hash, User, Fuel, FileText, ArrowRightLeft, Coins, Gauge, HardDrive, ChevronRight } from "lucide-react";
 import dayjs from "dayjs";
 import { NETWORK } from "@/data/network";
 
