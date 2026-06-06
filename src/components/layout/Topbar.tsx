@@ -42,14 +42,12 @@ export function Topbar() {
     return () => window.removeEventListener("mousedown", h);
   }, []);
 
-  // Preload validators for fast filter
   const { data: vals } = useQuery({
     queryKey: ["search-validators"],
     queryFn: () => cosmos.validators().then((r: any) => r?.validators ?? []),
     staleTime: 60_000,
   });
 
-  // Live remote lookups (debounced via query key)
   const trimmed = q.trim();
   const [debounced, setDebounced] = useState("");
   useEffect(() => {
@@ -64,28 +62,42 @@ export function Topbar() {
       const out: Suggestion[] = [];
       const v = debounced;
 
+      // Block height
       if (/^\d+$/.test(v)) {
-        // Block height — verify it exists
         try {
           const b = await cosmos.block(v);
           if (b?.block?.header?.height)
             out.push({ kind: "block", label: `Block #${Number(v).toLocaleString()}`, sub: b.block.header.time, to: { path: "/blocks/$height", param: v } });
-        } catch { /* ignore */ }
+        } catch {}
       }
+
+      // TX hash
       if (/^0x[0-9a-fA-F]{64}$/.test(v) || /^[0-9A-Fa-f]{64}$/.test(v)) {
         const hash = v.replace(/^0x/, "");
-        out.push({ kind: "tx", label: `Tx ${shorten(hash, 10, 8)}`, sub: "Cosmos / EVM transaction", to: { path: "/tx/$hash", param: hash } });
+        out.push({ kind: "tx", label: `Tx ${shorten(hash, 10, 8)}`, sub: "Transaction", to: { path: "/tx/$hash", param: hash } });
       }
+
+      // EVM address
       if (/^0x[0-9a-fA-F]{40}$/.test(v)) {
         try {
           const code = await evmRpc<string>("eth_getCode", [v, "latest"]);
-          if (code && code !== "0x") out.push({ kind: "contract", label: `Contract ${shorten(v)}`, sub: "EVM contract", to: { path: "/tx/$hash", param: v } });
-          else out.push({ kind: "address", label: `Address ${shorten(v)}`, sub: "EVM address", to: { path: "/tx/$hash", param: v } });
+          if (code && code !== "0x") out.push({ kind: "contract", label: `Contract ${shorten(v)}`, sub: "EVM contract", to: { path: "/address/$address", param: v } });
+          else out.push({ kind: "address", label: `Address ${shorten(v)}`, sub: "EVM address", to: { path: "/address/$address", param: v } });
         } catch {
-          out.push({ kind: "address", label: `Address ${shorten(v)}`, sub: "EVM address", to: { path: "/tx/$hash", param: v } });
+          out.push({ kind: "address", label: `Address ${shorten(v)}`, sub: "EVM address", to: { path: "/address/$address", param: v } });
         }
       }
-      if (v.startsWith("qie1")) out.push({ kind: "address", label: `Address ${shorten(v)}`, sub: "Cosmos address", to: { path: "/staking" } });
+
+      // Cosmos validator
+      if (v.startsWith("qievaloper")) {
+        out.push({ kind: "validator", label: `Validator ${shorten(v)}`, sub: "Cosmos validator", to: { path: "/staking/$validator", param: v } });
+      }
+
+      // Cosmos address
+      if (v.startsWith("qie1")) {
+        out.push({ kind: "address", label: `Address ${shorten(v)}`, sub: "Cosmos address", to: { path: "/address/$address", param: v } });
+      }
+
       return out;
     },
     staleTime: 15_000,
@@ -104,7 +116,7 @@ export function Topbar() {
         kind: "validator" as const,
         label: v.description?.moniker ?? shorten(v.operator_address),
         sub: shorten(v.operator_address, 12, 8),
-        to: { path: "/staking" },
+        to: { path: "/staking/$validator", param: v.operator_address },
       }));
     return [...(remote ?? []), ...valMatches].slice(0, 8);
   }, [trimmed, vals, remote]);
@@ -114,6 +126,8 @@ export function Topbar() {
     setQ("");
     if (s.to.path === "/blocks/$height") navigate({ to: "/blocks/$height", params: { height: s.to.param! } });
     else if (s.to.path === "/tx/$hash") navigate({ to: "/tx/$hash", params: { hash: s.to.param! } });
+    else if (s.to.path === "/address/$address") navigate({ to: "/address/$address", params: { address: s.to.param! } });
+    else if (s.to.path === "/staking/$validator") navigate({ to: "/staking/$validator", params: { validator: s.to.param! } });
     else navigate({ to: s.to.path as any });
   }
 
@@ -126,7 +140,10 @@ export function Topbar() {
     if (/^\d+$/.test(v)) navigate({ to: "/blocks/$height", params: { height: v } });
     else if (/^0x[0-9a-fA-F]{64}$/.test(v) || /^[0-9A-Fa-f]{64}$/.test(v))
       navigate({ to: "/tx/$hash", params: { hash: v.replace(/^0x/, "") } });
-    else if (v.startsWith("qievaloper")) navigate({ to: "/staking" });
+    else if (v.startsWith("qievaloper"))
+      navigate({ to: "/staking/$validator", params: { validator: v } });
+    else if (v.startsWith("qie") || /^0x[0-9a-fA-F]{40}$/.test(v))
+      navigate({ to: "/address/$address", params: { address: v } });
     else navigate({ to: "/tx/$hash", params: { hash: v } });
     setTimeout(() => setBusy(false), 400);
   }
