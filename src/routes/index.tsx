@@ -5,13 +5,14 @@ import {
   ArrowRight, Zap, Globe, 
   GitBranch, ExternalLink, Sparkles,
   ChevronRight, Database, Mail, TrendingUp,
-  BarChart3, PieChart, Clock, Radio
+  BarChart3, PieChart, Clock, Radio, Sun, Moon
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE } from "@/lib/api";
 import { AreaChart, Area, PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { useTheme } from "@/lib/theme";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [
@@ -43,7 +44,6 @@ function useLiveStats() {
       const stakingRatio = Number(bonded) && Number(supplyQ) ? (Number(bonded) / Number(supplyQ)) * 100 : 0;
       const peers = netInfo?.n_peers ?? 0;
 
-      // Top validators for chart
       const topValidators = validators
         .sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens))
         .slice(0, 8)
@@ -57,10 +57,50 @@ function useLiveStats() {
   });
 }
 
+function usePrice() {
+  return useQuery({
+    queryKey: ["qie-price"],
+    refetchInterval: 30_000,
+    queryFn: () =>
+      fetch("https://api.coingecko.com/api/v3/simple/price?ids=qie&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true")
+        .then(r => r.json())
+        .then(d => d?.qie || null),
+  });
+}
+
+function usePriceChart(period: string) {
+  return useQuery({
+    queryKey: ["qie-price-chart", period],
+    refetchInterval: 60_000,
+    queryFn: () =>
+      fetch(`https://api.coingecko.com/api/v3/coins/qie/market_chart?vs_currency=usd&days=${period}`)
+        .then(r => r.json())
+        .then(d => (d?.prices || []).map((p: [number, number]) => ({
+          time: new Date(p[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          date: new Date(p[0]).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+          price: p[1],
+        }))),
+    enabled: period !== "live",
+  });
+}
+
+const PERIODS = [
+  { key: "live", label: "Live" },
+  { key: "1", label: "1D" },
+  { key: "7", label: "1W" },
+  { key: "30", label: "1M" },
+  { key: "365", label: "1Y" },
+  { key: "max", label: "All" },
+];
+
 function HomePage() {
   const { data: stats } = useLiveStats();
+  const { data: price } = usePrice();
+  const [period, setPeriod] = useState("live");
+  const { data: chartData } = usePriceChart(period);
   const [typedText, setTypedText] = useState("");
   const fullText = "The Gateway to QIE Blockchain";
+  const { theme, toggle } = useTheme();
 
   useEffect(() => {
     let i = 0;
@@ -85,13 +125,14 @@ function HomePage() {
   ];
 
   const stats_cards = [
+    { label: "QIE Price", value: price?.usd ? `$${price.usd.toFixed(4)}` : "—", sub: price?.usd_24h_change ? `${price.usd_24h_change.toFixed(2)}%` : "", positive: price?.usd_24h_change > 0, icon: <TrendingUp className="w-5 h-5 text-white" />, color: "from-amber-500 to-yellow-500" },
+    { label: "Market Cap", value: price?.usd_market_cap ? `$${(price.usd_market_cap / 1e6).toFixed(2)}M` : "—", icon: <BarChart3 className="w-5 h-5 text-white" />, color: "from-cyan-500 to-blue-500" },
     { label: "Latest Block", value: stats?.height ? Number(stats.height).toLocaleString() : "—", icon: <Database className="w-5 h-5 text-white" />, color: "from-violet-500 to-fuchsia-500" },
     { label: "Validators", value: `${stats?.activeVals || 0} / ${stats?.validators || 0}`, icon: <Users className="w-5 h-5 text-white" />, color: "from-blue-500 to-cyan-500" },
     { label: "Total Supply", value: stats?.supply ? formatQIE(stats.supply, 0) : "—", icon: <Coins className="w-5 h-5 text-white" />, color: "from-amber-500 to-orange-500" },
     { label: "Staking Ratio", value: stats?.stakingRatio ? `${stats.stakingRatio.toFixed(1)}%` : "—", icon: <Layers className="w-5 h-5 text-white" />, color: "from-emerald-500 to-teal-500" },
   ];
 
-  // Pie data for network stats
   const pieData = stats ? [
     { name: "Bonded", value: Number(stats.bonded) / 1e18 },
     { name: "Liquid", value: Math.max(0, Number(stats.supply) / 1e18 - Number(stats.bonded) / 1e18) },
@@ -107,6 +148,20 @@ function HomePage() {
           <div className="absolute top-20 left-10 w-[300px] h-[300px] bg-gradient-to-r from-amber-500/5 to-transparent rounded-full blur-3xl" />
         </div>
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black,transparent)]" />
+
+        {/* Theme Toggle */}
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label="Toggle theme"
+            className="relative glass rounded-full w-14 h-8 flex items-center transition hover:ring-2 hover:ring-primary/40"
+          >
+            <span className={`absolute top-1 left-1 w-6 h-6 rounded-full grid place-items-center bg-gradient-to-br from-primary to-accent text-white transition-transform shadow-md ${theme === "light" ? "translate-x-6" : ""}`}>
+              {theme === "dark" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+            </span>
+          </button>
+        </div>
 
         <div className="relative container mx-auto px-4 text-center">
           <motion.div
@@ -186,7 +241,7 @@ function HomePage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.7 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto mt-14"
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto mt-14"
           >
             {stats_cards.map((s, i) => (
               <div
@@ -197,6 +252,11 @@ function HomePage() {
                   {s.icon}
                 </div>
                 <p className="text-lg font-bold tabular-nums">{s.value}</p>
+                {s.sub && (
+                  <p className={`text-xs font-medium ${s.positive ? 'text-emerald-400' : s.sub.startsWith('-') ? 'text-red-400' : 'text-muted-foreground'}`}>
+                    {s.sub}
+                  </p>
+                )}
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
               </div>
             ))}
@@ -207,19 +267,9 @@ function HomePage() {
       {/* CHARTS SECTION */}
       <section className="relative py-16 md:py-20">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {/* Pie Chart - Staking Distribution */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              viewport={{ once: true }}
-              className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <PieChart className="w-5 h-5 text-violet-400" />
-                <h3 className="font-semibold text-sm">Staking Distribution</h3>
-              </div>
+          {/* Row 1: Pie + Area + Pulse */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto mb-6">
+            <ChartCard icon={<PieChart className="w-5 h-5 text-violet-400" />} title="Staking Distribution" delay={0}>
               <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <RePieChart>
@@ -238,20 +288,9 @@ function HomePage() {
                   </div>
                 ))}
               </div>
-            </motion.div>
+            </ChartCard>
 
-            {/* Area Chart - Validator Power */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              viewport={{ once: true }}
-              className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-5 h-5 text-cyan-400" />
-                <h3 className="font-semibold text-sm">Top Validators Power</h3>
-              </div>
+            <ChartCard icon={<TrendingUp className="w-5 h-5 text-cyan-400" />} title="Top Validators Power" delay={0.1}>
               <div className="h-44">
                 {stats?.topValidators?.length ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -272,46 +311,97 @@ function HomePage() {
                   <div className="h-full grid place-items-center text-xs text-muted-foreground">Loading...</div>
                 )}
               </div>
-            </motion.div>
+            </ChartCard>
 
-            {/* Stats Card */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              viewport={{ once: true }}
-              className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Radio className="w-5 h-5 text-amber-400" />
-                <h3 className="font-semibold text-sm">Network Pulse</h3>
-              </div>
+            <ChartCard icon={<Radio className="w-5 h-5 text-amber-400" />} title="Network Pulse" delay={0.2}>
               <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Peers</span><span className="font-bold text-cyan-400">{stats?.peers || "—"}</span></div>
-                  <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" style={{ width: `${Math.min((stats?.peers || 0) / 50 * 100, 100)}%` }} />
-                  </div>
+                <ProgressBar label="Peers" value={stats?.peers || 0} max={50} color="from-cyan-500 to-blue-500" textColor="text-cyan-400" />
+                <ProgressBar label="Active Validators" value={stats?.activeVals || 0} max={stats?.validators || 1} color="from-emerald-500 to-teal-500" textColor="text-emerald-400" />
+                <ProgressBar label="Staking Ratio" value={stats?.stakingRatio || 0} max={100} color="from-violet-500 to-fuchsia-500" textColor="text-violet-400" suffix="%" />
+                <div className="pt-2 border-t border-border/30 space-y-1">
+                  <div className="flex justify-between text-xs"><span className="text-muted-foreground">Chain Height</span><span className="font-mono font-bold">{stats?.height ? Number(stats.height).toLocaleString() : "—"}</span></div>
+                  <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Supply</span><span className="font-mono font-bold">{stats?.supply ? formatQIE(stats.supply, 0) : "—"}</span></div>
                 </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Active Validators</span><span className="font-bold text-emerald-400">{stats?.activeVals || 0}/{stats?.validators || 0}</span></div>
-                  <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style={{ width: `${stats?.validators ? (stats.activeVals / stats.validators) * 100 : 0}%` }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Staking Ratio</span><span className="font-bold text-violet-400">{stats?.stakingRatio?.toFixed(1) || "0"}%</span></div>
-                  <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full" style={{ width: `${Math.min(stats?.stakingRatio || 0, 100)}%` }} />
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-border/30">
-                  <div className="flex justify-between text-xs"><span className="text-muted-foreground">Chain Height</span><span className="font-mono font-bold text-white">{stats?.height ? Number(stats.height).toLocaleString() : "—"}</span></div>
-                </div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Supply</span><span className="font-mono font-bold text-white">{stats?.supply ? formatQIE(stats.supply, 0) : "—"}</span></div>
               </div>
-            </motion.div>
+            </ChartCard>
           </div>
+
+          {/* Row 2: Price Chart */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            viewport={{ once: true }}
+            className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300 max-w-6xl mx-auto"
+          >
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="font-semibold text-sm">QIE Price</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold">${price?.usd?.toFixed(4) || "—"}</span>
+                    {price?.usd_24h_change && (
+                      <span className={`text-xs font-medium ${price.usd_24h_change > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {price.usd_24h_change > 0 ? '↑' : '↓'} {Math.abs(price.usd_24h_change).toFixed(2)}%
+                      </span>
+                    )}
+                    {price?.usd_24h_vol && (
+                      <span className="text-xs text-muted-foreground ml-2">Vol: ${(price.usd_24h_vol / 1e6).toFixed(2)}M</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 bg-muted/30 rounded-xl p-1">
+                {PERIODS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPeriod(p.key)}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-all ${
+                      period === p.key ? "bg-violet-500 text-white" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-64">
+              {period === "live" ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold tabular-nums mb-2">${price?.usd?.toFixed(6) || "—"}</div>
+                    <div className="flex items-center justify-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Market Cap:</span>
+                      <span className="font-bold">${price?.usd_market_cap ? (price.usd_market_cap / 1e6).toFixed(2) + 'M' : "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-sm mt-1">
+                      <span className="text-muted-foreground">24h Volume:</span>
+                      <span className="font-bold">${price?.usd_24h_vol ? (price.usd_24h_vol / 1e6).toFixed(2) + 'M' : "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : chartData?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                    <XAxis dataKey={["1", "7"].includes(period) ? "time" : "date"} tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={50} />
+                    <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(v: any) => `$${Number(v).toFixed(6)}`} />
+                    <Area type="monotone" dataKey="price" stroke="#F59E0B" strokeWidth={2} fill="url(#priceGrad)" dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full grid place-items-center text-xs text-muted-foreground">Loading chart...</div>
+              )}
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -414,6 +504,36 @@ function HomePage() {
           © {new Date().getFullYear()} QIE Blockchain. All rights reserved.
         </div>
       </footer>
+    </div>
+  );
+}
+
+function ChartCard({ icon, title, children, delay }: { icon: React.ReactNode; title: string; children: React.ReactNode; delay: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay }}
+      viewport={{ once: true }}
+      className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
+    >
+      <div className="flex items-center gap-2 mb-3">{icon}<h3 className="font-semibold text-sm">{title}</h3></div>
+      {children}
+    </motion.div>
+  );
+}
+
+function ProgressBar({ label, value, max, color, textColor, suffix }: { label: string; value: number; max: number; color: string; textColor: string; suffix?: string }) {
+  const pct = max > 0 ? (value / max) * 100 : 0;
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={`font-bold ${textColor}`}>{value}{suffix || `/${max}`}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+        <div className={`h-full bg-gradient-to-r ${color} rounded-full transition-all duration-500`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
     </div>
   );
 }
