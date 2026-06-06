@@ -12,15 +12,14 @@ export const Route = createFileRoute("/blocks/")({
   component: BlocksListPage,
 });
 
-// Warna solid kontras untuk dark & light mode
 const BAR_COLORS = {
-  high: "#D946EF",    // pink terang
-  medium: "#8B5CF6",  // ungu terang
-  low: "#06B6D4",     // cyan terang
-  empty: "#6B7280",   // abu-abu medium
+  high: "#D946EF",    // pink terang - 5+ TXs
+  medium: "#8B5CF6",  // ungu terang - 2-4 TXs
+  low: "#06B6D4",     // cyan terang - 1 TX
+  empty: "#F59E0B",   // kuning/amber - 0 TXs
 };
 
-const CHART_TEXT_COLOR = "#9CA3AF"; // abu-abu terang, terbaca di dark mode
+const CHART_TEXT_COLOR = "#9CA3AF";
 
 function getBarColor(txs: number): string {
   if (txs >= 5) return BAR_COLORS.high;
@@ -108,7 +107,7 @@ function BlocksListPage() {
       <Card>
         <SectionTitle title="Block Activity" sub="Transactions per block · Live updating" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
         
-        {/* Legend dengan warna solid kontras */}
+        {/* Legend */}
         <div className="flex items-center gap-4 mb-3 px-2 flex-wrap">
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="w-3 h-3 rounded-sm" style={{ background: BAR_COLORS.high }} /> 5+ TXs
@@ -120,7 +119,7 @@ function BlocksListPage() {
             <span className="w-3 h-3 rounded-sm" style={{ background: BAR_COLORS.low }} /> 1 TX
           </span>
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="w-3 h-3 rounded-sm border border-border" style={{ background: BAR_COLORS.empty }} /> Empty
+            <span className="w-3 h-3 rounded-sm border border-border" style={{ background: BAR_COLORS.empty }} /> Empty (0 TXs)
           </span>
           <span className="flex items-center gap-1.5 text-[11px] text-violet-400 ml-auto">
             <TrendingUp className="w-3.5 h-3.5 animate-pulse" /> Live
@@ -180,7 +179,6 @@ function BlocksListPage() {
                     <Cell 
                       key={index} 
                       fill={getBarColor(entry.txs)}
-                      className="hover:opacity-80 transition-opacity"
                     />
                   ))}
                 </Bar>
