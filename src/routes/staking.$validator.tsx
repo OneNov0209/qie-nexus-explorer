@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
-import { NETWORK } from "@/data/network";
+import { NETWORK, WALLET_LOGOS } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
 import { ArrowLeft, User, Layers, Gift, Coins, Percent, Shield, AlertTriangle, ExternalLink, Copy, TrendingUp, FileText, Key, Unlock } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -14,27 +14,18 @@ export const Route = createFileRoute("/staking/$validator")({
   component: ValidatorDetail,
 });
 
-const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#F59E0B", "#10B981"];
+const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444"];
 
 async function fetchValidatorAddresses(operatorAddr: string) {
   try {
-    const delRes = await fetch(
-      `${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations?pagination.limit=1`
-    ).then(r => r.json());
-    
+    const delRes = await fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations?pagination.limit=1`).then(r => r.json());
     const delegatorAddr = delRes?.delegation_responses?.[0]?.delegation?.delegator_address;
     if (!delegatorAddr) return { accountAddr: "", hexAddr: "" };
-
-    const accRes = await fetch(
-      `${NETWORK.rest}/cosmos/auth/v1beta1/accounts/${delegatorAddr}`
-    ).then(r => r.json());
-    
+    const accRes = await fetch(`${NETWORK.rest}/cosmos/auth/v1beta1/accounts/${delegatorAddr}`).then(r => r.json());
     const pubKeyBase64 = accRes?.account?.base_account?.pub_key?.key;
     if (!pubKeyBase64) return { accountAddr: delegatorAddr, hexAddr: "" };
-
     const pubKeyBytes = Uint8Array.from(atob(pubKeyBase64), c => c.charCodeAt(0));
     const hexAddr = Array.from(pubKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-
     return { accountAddr: delegatorAddr, hexAddr };
   } catch {
     return { accountAddr: "", hexAddr: "" };
@@ -56,12 +47,10 @@ function ValidatorDetail() {
         cosmos.signingInfos().catch(() => ({ info: [] })),
         fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/validatorsets/latest`).then(r => r.json()).catch(() => ({ validators: [] })),
         fetchValidatorAddresses(validator),
-        fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${validator}/delegations?pagination.limit=50`)
-          .then(r => r.json()).catch(() => ({ delegation_responses: [] })),
+        fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${validator}/delegations?pagination.limit=50`).then(r => r.json()).catch(() => ({ delegation_responses: [] })),
       ]);
 
       const delegations = delegationsRes?.delegation_responses ?? [];
-      
       const allVals = vals?.validators ?? [];
       const bonded = Number(pool?.bonded_tokens ?? 0);
       const totalTokens = Number(v?.tokens ?? 0);
@@ -72,32 +61,23 @@ function ValidatorDetail() {
       const minSelfDelegation = v?.min_self_delegation ?? "0";
       const unbondingHeight = v?.unbonding_height ?? "0";
       const unbondingTime = v?.unbonding_time;
-
       const operatorAddr = v?.operator_address ?? validator;
       const consensusPubkeyBase64 = v?.consensus_pubkey?.key ?? "";
 
-      const vsValidator = (validatorSet?.validators ?? []).find(
-        (sv: any) => sv.pub_key?.key === consensusPubkeyBase64
-      );
+      const vsValidator = (validatorSet?.validators ?? []).find((sv: any) => sv.pub_key?.key === consensusPubkeyBase64);
       const signerAddr = vsValidator?.address ?? "";
-
       const accountAddr = addresses?.accountAddr ?? "";
       const hexAddr = addresses?.hexAddr ?? "";
 
-      // Self delegation — fetch actual delegation from operator to themselves
       let selfDelegationAmount = 0;
       if (accountAddr) {
         try {
-          const selfDelRes = await fetch(
-            `${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations/${accountAddr}`
-          ).then(r => r.json());
+          const selfDelRes = await fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${operatorAddr}/delegations/${accountAddr}`).then(r => r.json());
           selfDelegationAmount = Number(selfDelRes?.delegation_response?.balance?.amount ?? 0);
         } catch {}
       }
       const selfDelegationPct = totalTokens > 0 ? (selfDelegationAmount / totalTokens) * 100 : 0;
-
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
-
       const commissionPool = totalTokens * comm;
       const outstandingRewards = commissionPool * 0.1;
 
@@ -188,6 +168,16 @@ function ValidatorDetail() {
             </div>
           </div>
         </div>
+        <div className="ml-auto">
+          <a
+            href="https://wallet.keplr.app/chains/qie"
+            target="_blank"
+            rel="noreferrer"
+            className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-1.5 hover:shadow-lg hover:shadow-violet-500/25 transition-all"
+          >
+            Stake with Keplr <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
       </div>
 
       {/* Stats */}
@@ -211,39 +201,13 @@ function ValidatorDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <SectionTitle title="Voting Power Composition" />
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={vpPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value" strokeWidth={0}>
-                  {vpPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i]} />))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex justify-center gap-6 pb-2">
-            {vpPieData.map((d, i) => (
-              <div key={d.name} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i] }} /><span className="text-xs text-muted-foreground">{d.name}</span></div>
-            ))}
-          </div>
+          <div className="h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={vpPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value" strokeWidth={0}>{vpPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i]} />))}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>
+          <div className="flex justify-center gap-6 pb-2">{vpPieData.map((d, i) => (<div key={d.name} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i] }} /><span className="text-xs text-muted-foreground">{d.name}</span></div>))}</div>
         </Card>
         <Card>
           <SectionTitle title="Delegation Distribution" />
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={selfDelPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value" strokeWidth={0}>
-                  {selfDelPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i + 2]} />))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex justify-center gap-6 pb-2">
-            {selfDelPieData.map((d, i) => (
-              <div key={d.name} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i + 2] }} /><span className="text-xs text-muted-foreground">{d.name}</span></div>
-            ))}
-          </div>
+          <div className="h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={selfDelPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value" strokeWidth={0}>{selfDelPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i + 2]} />))}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>
+          <div className="flex justify-center gap-6 pb-2">{selfDelPieData.map((d, i) => (<div key={d.name} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i + 2] }} /><span className="text-xs text-muted-foreground">{d.name}</span></div>))}</div>
         </Card>
       </div>
 
@@ -254,49 +218,25 @@ function ValidatorDetail() {
         <InfoCard icon={<Unlock className="w-4 h-4 text-violet-400" />} label="Min Self Delegation" value={minSelfDelegation !== "0" ? `${formatQIE(minSelfDelegation, 0)} ${NETWORK.symbol}` : "—"} />
       </div>
 
-      {/* Voting Power Events (Delegations) */}
+      {/* Voting Power Events */}
       <Card>
         <SectionTitle title="Voting Power Events" sub={`${delegations.length} delegator${delegations.length !== 1 ? 's' : ''}`} icon={<Layers className="w-5 h-5 text-violet-500" />} />
         {delegations.length > 0 ? (
           <div className="overflow-x-auto mt-2">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60 bg-muted/30">
-                  <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Delegator</th>
-                  <th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Amount</th>
-                  <th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Shares</th>
-                </tr>
-              </thead>
+              <thead><tr className="border-b border-border/60 bg-muted/30"><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Delegator</th><th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Amount</th><th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Shares</th></tr></thead>
               <tbody>
-                {delegations
-                  .sort((a: any, b: any) => Number(b.balance?.amount ?? 0) - Number(a.balance?.amount ?? 0))
-                  .map((d: any, i: number) => (
-                    <tr key={i} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
-                      <td className="p-3">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {shorten(d.delegation?.delegator_address ?? "", 12, 10)}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right tabular-nums">
-                        <span className="text-sm font-medium text-emerald-400">
-                          + {formatQIE(d.balance?.amount ?? "0", 0)} {NETWORK.symbol}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right tabular-nums">
-                        <span className="text-xs text-muted-foreground">
-                          {Number(d.balance?.amount ?? 0) > 0 
-                            ? ((Number(d.balance.amount) / totalTokens) * 100).toFixed(2) + '%'
-                            : '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                {delegations.sort((a: any, b: any) => Number(b.balance?.amount ?? 0) - Number(a.balance?.amount ?? 0)).map((d: any, i: number) => (
+                  <tr key={i} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
+                    <td className="p-3"><span className="font-mono text-xs text-muted-foreground">{shorten(d.delegation?.delegator_address ?? "", 12, 10)}</span></td>
+                    <td className="p-3 text-right tabular-nums"><span className="text-sm font-medium text-emerald-400">+ {formatQIE(d.balance?.amount ?? "0", 0)} {NETWORK.symbol}</span></td>
+                    <td className="p-3 text-right tabular-nums"><span className="text-xs text-muted-foreground">{Number(d.balance?.amount ?? 0) > 0 ? ((Number(d.balance.amount) / totalTokens) * 100).toFixed(2) + '%' : '—'}</span></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="text-center py-8 text-muted-foreground text-sm">No delegations found.</div>
-        )}
+        ) : (<div className="text-center py-8 text-muted-foreground text-sm">No delegations found.</div>)}
       </Card>
 
       {/* Transactions */}
@@ -304,25 +244,8 @@ function ValidatorDetail() {
         <SectionTitle title="Transactions" sub="Recent transactions related to this validator" icon={<FileText className="w-5 h-5 text-cyan-500" />} />
         <div className="overflow-x-auto mt-2">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-muted/30">
-                <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Height</th>
-                <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Hash</th>
-                <th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Messages</th>
-                <th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                  <div className="flex flex-col items-center gap-2">
-                    <AlertTriangle className="w-8 h-8 opacity-30" />
-                    <p className="text-sm">Transaction search is not supported by this node.</p>
-                    <p className="text-xs opacity-60">The REST API does not support event-based transaction queries.</p>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
+            <thead><tr className="border-b border-border/60 bg-muted/30"><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Height</th><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Hash</th><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Messages</th><th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Time</th></tr></thead>
+            <tbody><tr><td colSpan={4} className="p-8 text-center text-muted-foreground"><div className="flex flex-col items-center gap-2"><AlertTriangle className="w-8 h-8 opacity-30" /><p className="text-sm">Transaction search is not supported by this node.</p></div></td></tr></tbody>
           </table>
         </div>
       </Card>
@@ -333,10 +256,7 @@ function ValidatorDetail() {
         <div className="space-y-2 mt-2">
           {topDelegators.map((d: any, i: number) => (
             <div key={d.address} className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted/30 transition-colors">
-              <div className="flex items-center gap-3">
-                <span className={`w-6 h-6 rounded-md grid place-items-center text-xs font-bold ${i < 3 ? "bg-gradient-to-br from-amber-400/20 to-yellow-500/20 text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
-                <span className="text-sm">{d.name}</span>
-              </div>
+              <div className="flex items-center gap-3"><span className={`w-6 h-6 rounded-md grid place-items-center text-xs font-bold ${i < 3 ? "bg-gradient-to-br from-amber-400/20 to-yellow-500/20 text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span><span className="text-sm">{d.name}</span></div>
               <span className="text-xs tabular-nums">{formatQIE(d.tokens * 1e18, 0)} ({d.vp.toFixed(2)}%)</span>
             </div>
           ))}
@@ -396,13 +316,7 @@ function ValidatorDetail() {
 }
 
 function InfoCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card p-4 hover:border-violet-500/20 transition-colors">
-      <div className="flex items-center gap-2 text-muted-foreground mb-2">{icon}<span className="text-[11px] uppercase tracking-wider">{label}</span></div>
-      <p className="font-bold text-lg tabular-nums">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-    </div>
-  );
+  return (<div className="rounded-xl border border-border/60 bg-card p-4 hover:border-violet-500/20 transition-colors"><div className="flex items-center gap-2 text-muted-foreground mb-2">{icon}<span className="text-[11px] uppercase tracking-wider">{label}</span></div><p className="font-bold text-lg tabular-nums">{value}</p>{sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}</div>);
 }
 
 function InfoCardSmall({ label, value }: { label: string; value: string }) {
@@ -415,14 +329,5 @@ function StatusItem({ label, value, success, danger }: { label: string; value: s
 
 function DetailRow({ label, value, mono, copy }: { label: string; value?: string; mono?: boolean; copy?: boolean }) {
   const [copied, setCopied] = useState(false);
-  const display = value ?? "—";
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-2 border-b border-border/30 last:border-0">
-      <dt className="text-xs text-muted-foreground uppercase tracking-wider sm:w-44 shrink-0">{label}</dt>
-      <dd className={`text-sm break-all flex-1 ${mono ? "font-mono text-xs" : ""}`}>{display}</dd>
-      {copy && value && (
-        <button onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="text-xs text-muted-foreground hover:text-violet-400 transition-colors shrink-0">{copied ? "Copied!" : "Copy"}</button>
-      )}
-    </div>
-  );
+  return (<div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-2 border-b border-border/30 last:border-0"><dt className="text-xs text-muted-foreground uppercase tracking-wider sm:w-44 shrink-0">{label}</dt><dd className={`text-sm break-all flex-1 ${mono ? "font-mono text-xs" : ""}`}>{value ?? "—"}</dd>{copy && value && (<button onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="text-xs text-muted-foreground hover:text-violet-400 transition-colors shrink-0">{copied ? "Copied!" : "Copy"}</button>)}</div>);
 }
