@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Boxes, Receipt, Vote, Layers, Activity,
   Coins, Settings2, Network, FileCode2, RefreshCw, AppWindow, Radio,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Fuel,
 } from "lucide-react";
 import { NETWORK } from "@/data/network";
 import { useState } from "react";
@@ -15,6 +15,7 @@ const nav = [
   { to: "/staking", label: "Staking", icon: Layers },
   { to: "/governance", label: "Governance", icon: Vote },
   { to: "/uptime", label: "Uptime", icon: Activity },
+  { to: "/gas-tracker", label: "Gas Tracker", icon: Fuel },
   { to: "/supply", label: "Supply", icon: Coins },
   { to: "/parameters", label: "Parameters", icon: Settings2 },
   { to: "/consensus", label: "Consensus", icon: Radio },
