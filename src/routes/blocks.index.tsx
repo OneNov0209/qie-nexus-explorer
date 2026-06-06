@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { evm, hexToNum, shorten } from "@/lib/api";
-import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
-import { Boxes, Clock, ChevronRight, BarChart3, Activity, Zap, User, Hash, Layers, TrendingUp } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
+import { Boxes, Clock, BarChart3, Activity, Zap } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import dayjs from "dayjs";
 import { useMemo } from "react";
 
@@ -29,12 +29,10 @@ function BlocksListPage() {
   const chartData = useMemo(() => {
     if (!data) return [];
     return [...data].reverse().map((b: any) => ({
-      height: hexToNum(b.number),
+      name: `#${hexToNum(b.number).toLocaleString()}`,
       txs: b.transactions?.length ?? 0,
-      gasUsed: b.gasUsed ? hexToNum(b.gasUsed) : 0,
-      gasLimit: b.gasLimit ? hexToNum(b.gasLimit) : 1,
-      gasPct: b.gasLimit ? ((hexToNum(b.gasUsed || 0) / hexToNum(b.gasLimit || 1)) * 100).toFixed(1) : 0,
-      time: dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss"),
+      gasPct: b.gasLimit ? ((hexToNum(b.gasUsed || 0) / hexToNum(b.gasLimit || 1)) * 100).toFixed(0) : 0,
+      time: dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm"),
     }));
   }, [data]);
 
@@ -49,6 +47,14 @@ function BlocksListPage() {
       : 0;
     return { totalTxs, avgGas: Math.round(avgGas), avgBlockTime };
   }, [data]);
+
+  // Colors for bars
+  const barColors = chartData.map((d) => {
+    if (d.txs > 10) return "#D946EF";
+    if (d.txs > 5) return "#8B5CF6";
+    if (d.txs > 0) return "#A78BFA";
+    return "hsl(var(--muted-foreground) / 0.3)";
+  });
 
   return (
     <div className="space-y-6 pb-8">
@@ -90,40 +96,47 @@ function BlocksListPage() {
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Bar Chart */}
       <Card>
-        <SectionTitle title="Block Activity" sub="Transactions & Gas per block" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
+        <SectionTitle title="Block Activity" sub="Transactions per block" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
         <div className="flex items-center gap-4 mb-2 px-2">
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="w-3 h-0.5 rounded-full bg-violet-500" /> TXs
+            <span className="w-3 h-0.5 rounded-full bg-[#D946EF]" /> 10+ TXs
           </span>
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="w-3 h-0.5 rounded-full bg-cyan-400" /> Gas %
+            <span className="w-3 h-0.5 rounded-full bg-[#8B5CF6]" /> 5-10 TXs
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="w-3 h-0.5 rounded-full bg-[#A78BFA]" /> 1-4 TXs
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="w-3 h-0.5 rounded-full bg-muted-foreground/30" /> Empty
           </span>
         </div>
-        <div className="h-56 px-2 pb-4">
+        <div className="h-72 px-2 pb-4">
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="blocksTxGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.5} />
-                    <stop offset="60%" stopColor="#D946EF" stopOpacity={0.15} />
-                    <stop offset="100%" stopColor="#D946EF" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="blocksGasGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                  <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#D946EF" stopOpacity={0.5} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
-                <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} unit="%" hide />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }} />
-                <Area yAxisId="left" type="monotone" dataKey="txs" name="Transactions" stroke="#8B5CF6" strokeWidth={2} fill="url(#blocksTxGrad)" dot={false} activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2, fill: "#8B5CF6" }} />
-                <Area yAxisId="right" type="monotone" dataKey="gasPct" name="Gas Used %" stroke="#06B6D4" strokeWidth={1.5} fill="url(#blocksGasGrad)" dot={false} activeDot={{ r: 3, stroke: "#fff", strokeWidth: 2, fill: "#06B6D4" }} />
-              </AreaChart>
+                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={8} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={60} interval={2} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }}
+                  formatter={(value: any, name: string) => [value, name === "txs" ? "Transactions" : name]}
+                  labelFormatter={(label: string) => `Block ${label}`}
+                />
+                <Bar dataKey="txs" name="Transactions" radius={[4, 4, 0, 0]} maxBarSize={20}>
+                  {chartData.map((entry, index) => (
+                    <Cell key={index} fill={barColors[index]} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Waiting for data...</div>
