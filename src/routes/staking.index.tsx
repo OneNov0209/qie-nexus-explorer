@@ -2,30 +2,21 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill, StatCard } from "@/components/ui/primitives";
-import { NETWORK } from "@/data/network";
+import { NETWORK, WALLET_LOGOS } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
-import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
-import { toast } from "sonner";
 import { useState } from "react";
-import { Gift, Loader2, Layers, Coins, Search, User, AlertTriangle, CheckCircle, Clock, ChevronRight } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Gift, Layers, Coins, Search, User, AlertTriangle, CheckCircle, Clock, ChevronRight, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/staking/")({
   head: () => ({ meta: [{ title: "Staking — QIE Explorer" }] }),
   component: StakingListPage,
 });
 
-type Action = "Delegate" | "Redelegate" | "Undelegate";
 type FilterType = "all" | "active" | "inactive" | "jailed";
 
 function StakingListPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
-  const [modal, setModal] = useState<{ type: Action; val: any } | null>(null);
-  const [amount, setAmount] = useState("");
-  const [dstVal, setDstVal] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [claiming, setClaiming] = useState(false);
   const { cosmos: cw } = useWallet();
   const qc = useQueryClient();
 
@@ -86,49 +77,6 @@ function StakingListPage() {
   const totalReward = userData?.rewards?.total?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
   const totalStaked = myDels.reduce((a, d) => a + Number(d.balance?.amount ?? 0), 0);
   const balanceQ = userData?.bal?.balances?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
-  const validatorsWithRewards = myRewards
-    .filter((r) => Number(r.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? 0) > 0)
-    .map((r) => r.validator_address);
-
-  function openModal(type: Action, val: any) {
-    if (!cw.address) return toast.error("Connect a Cosmos wallet first");
-    setModal({ type, val });
-    setAmount("");
-    setDstVal("");
-  }
-
-  async function submit() {
-    if (!modal) return;
-    const { type, val } = modal;
-    if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount");
-    if (type === "Redelegate" && !dstVal) return toast.error("Pick destination validator");
-    setBusy(true);
-    try {
-      let res;
-      if (type === "Delegate") res = await delegate(val.operator_address, amount);
-      else if (type === "Undelegate") res = await undelegate(val.operator_address, amount);
-      else res = await redelegate(val.operator_address, dstVal, amount);
-      toast.success(`${type} success`, { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
-      setModal(null);
-      qc.invalidateQueries({ queryKey: ["user-staking"] });
-      qc.invalidateQueries({ queryKey: ["validators"] });
-    } catch (e: any) {
-      toast.error(`${type} failed`, { description: e?.message ?? String(e) });
-    } finally { setBusy(false); }
-  }
-
-  async function claimAll() {
-    if (!cw.address) return toast.error("Connect a Cosmos wallet first");
-    if (!validatorsWithRewards.length) return toast.error("No rewards to claim");
-    setClaiming(true);
-    try {
-      const res = await withdrawAllRewards(validatorsWithRewards);
-      toast.success("Rewards claimed", { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
-      qc.invalidateQueries({ queryKey: ["user-staking"] });
-    } catch (e: any) {
-      toast.error("Claim failed", { description: e?.message ?? String(e) });
-    } finally { setClaiming(false); }
-  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -152,6 +100,25 @@ function StakingListPage() {
         </div>
       </div>
 
+      {/* Keplr Staking Banner */}
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <img src={WALLET_LOGOS.keplr} alt="Keplr" className="w-8 h-8" />
+          <div>
+            <p className="text-sm font-medium">Stake with Keplr Dashboard</p>
+            <p className="text-xs text-muted-foreground">Delegate, undelegate, and claim rewards directly on Keplr</p>
+          </div>
+        </div>
+        <a
+          href="https://wallet.keplr.app/chains/qie"
+          target="_blank"
+          rel="noreferrer"
+          className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all shrink-0 flex items-center gap-1.5"
+        >
+          Open Keplr <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
+
       {/* User Stats */}
       {cw.address && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -159,11 +126,15 @@ function StakingListPage() {
           <StatCard label="Total Staked" value={`${formatQIE(totalStaked, 4)} ${NETWORK.symbol}`} sub={`${myDels.length} validators`} icon={<Layers className="w-4 h-4" />} />
           <StatCard label="Pending Rewards" value={`${formatQIE(totalReward, 6)} ${NETWORK.symbol}`} icon={<Gift className="w-4 h-4" />} />
           <div className="flex items-center justify-center">
-            <button onClick={claimAll} disabled={claiming || !validatorsWithRewards.length}
-              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-5 py-3 text-sm font-medium flex items-center gap-2 disabled:opacity-50 hover:shadow-lg hover:shadow-violet-500/25 transition-all">
-              {claiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-              Claim All Rewards
-            </button>
+            <a
+              href="https://wallet.keplr.app/chains/qie"
+              target="_blank"
+              rel="noreferrer"
+              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-5 py-3 text-sm font-medium flex items-center gap-2 hover:shadow-lg hover:shadow-violet-500/25 transition-all"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Claim in Keplr
+            </a>
           </div>
         </div>
       )}
@@ -174,13 +145,22 @@ function StakingListPage() {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by moniker or address…"
-              className="w-64 pl-9 pr-3 py-2 rounded-xl border border-border/60 bg-card text-sm focus:border-violet-500/50 focus:outline-none transition-colors" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by moniker or address…"
+              className="w-64 pl-9 pr-3 py-2 rounded-xl border border-border/60 bg-card text-sm focus:border-violet-500/50 focus:outline-none transition-colors"
+            />
           </div>
           <div className="flex items-center gap-1 bg-card border border-border/60 rounded-xl p-1">
             {(["all", "active", "inactive", "jailed"] as FilterType[]).map((f) => (
-              <button key={f} onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 text-xs rounded-lg capitalize transition-all ${filter === f ? "bg-violet-500 text-white" : "text-muted-foreground hover:text-foreground"}`}>
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 text-xs rounded-lg capitalize transition-all ${
+                  filter === f ? "bg-violet-500 text-white" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
                 {f}
               </button>
             ))}
@@ -208,9 +188,8 @@ function StakingListPage() {
                 const comm = Number(v.commission?.commission_rates?.rate ?? 0);
                 const vp = bonded ? (Number(v.tokens) / bonded) * 100 : 0;
                 const bondedOk = v.status === "BOND_STATUS_BONDED";
-                const myDel = myDels.find((d) => d.delegation?.validator_address === v.operator_address);
-                const myAmt = myDel?.balance?.amount ?? "0";
                 const identity = v.description?.identity;
+
                 return (
                   <tr key={v.operator_address} className="border-b border-border/30 hover:bg-muted/20 transition-colors group">
                     <td className="p-4 text-muted-foreground tabular-nums text-xs">{i + 1}</td>
@@ -218,8 +197,12 @@ function StakingListPage() {
                       <Link to="/staking/$validator" params={{ validator: v.operator_address }} className="flex items-center gap-3 group/link">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 overflow-hidden">
                           {identity ? (
-                            <img src={`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`} alt=""
-                              className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            <img
+                              src={`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
                           ) : (
                             <User className="w-4 h-4 text-violet-400" />
                           )}
@@ -243,15 +226,14 @@ function StakingListPage() {
                       {bondedOk ? <Pill variant="success">Active</Pill> : v.jailed ? <Pill variant="danger">Jailed</Pill> : <Pill variant="warning">Inactive</Pill>}
                     </td>
                     <td className="p-4 text-right">
-                      <div className="inline-flex gap-1">
-                        <button onClick={() => openModal("Delegate", v)} className="bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs rounded-lg px-2.5 py-1.5 transition-colors">Delegate</button>
-                        {Number(myAmt) > 0 && (
-                          <>
-                            <button onClick={() => openModal("Redelegate", v)} className="bg-muted/50 hover:bg-muted text-xs rounded-lg px-2.5 py-1.5 transition-colors">Re-Delegate</button>
-                            <button onClick={() => openModal("Undelegate", v)} className="bg-muted/50 hover:bg-muted text-xs rounded-lg px-2.5 py-1.5 transition-colors">Un-Delegate</button>
-                          </>
-                        )}
-                      </div>
+                      <a
+                        href="https://wallet.keplr.app/chains/qie"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs rounded-lg px-2.5 py-1.5 transition-colors inline-flex items-center gap-1"
+                      >
+                        Stake <ExternalLink className="w-3 h-3" />
+                      </a>
                     </td>
                   </tr>
                 );
@@ -263,41 +245,6 @@ function StakingListPage() {
           </table>
         </div>
       </Card>
-
-      {/* Dialog */}
-      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
-        <DialogContent className="border-border max-w-md">
-          <DialogHeader><DialogTitle>{modal?.type} — {modal?.val?.description?.moniker}</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="text-xs text-muted-foreground">Validator: <span className="font-mono">{shorten(modal?.val?.operator_address ?? "", 14, 10)}</span></div>
-            {modal?.type === "Redelegate" && (
-              <div>
-                <label className="text-xs text-muted-foreground">Destination Validator</label>
-                <select value={dstVal} onChange={(e) => setDstVal(e.target.value)} className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1">
-                  <option value="">Select validator…</option>
-                  {list.filter((x: any) => x.operator_address !== modal.val.operator_address && x.status === "BOND_STATUS_BONDED")
-                    .map((x: any) => (<option key={x.operator_address} value={x.operator_address}>{x.description?.moniker}</option>))}
-                </select>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-muted-foreground flex justify-between">
-                <span>Amount ({NETWORK.symbol})</span>
-                {modal?.type === "Delegate" ? <span>Available: {formatQIE(balanceQ, 4)}</span>
-                  : <span>Staked: {formatQIE(myDels.find((d) => d.delegation?.validator_address === modal?.val?.operator_address)?.balance?.amount ?? "0", 4)}</span>}
-              </label>
-              <input type="number" step="0.0001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
-                className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1" />
-            </div>
-          </div>
-          <DialogFooter>
-            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted transition-colors">Cancel</button>
-            <button onClick={submit} disabled={busy} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
-              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Confirm {modal?.type}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
