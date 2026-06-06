@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Wallet, LogOut, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useWallet, connectMetaMask, connectKeplr, connectQieWallet } from "@/lib/wallet";
+import { useWallet, connectKeplr, connectQieWallet } from "@/lib/wallet";
 import { NETWORK, WALLET_LOGOS } from "@/data/network";
 import { shorten } from "@/lib/api";
 import { toast } from "sonner";
@@ -12,11 +12,11 @@ export function WalletButton() {
   const { evm, cosmos, disconnectEvm, disconnectCosmos } = useWallet();
   const connected = evm.address || cosmos.address;
 
-  async function tryConnect(kind: "metamask" | "keplr" | "qie") {
+  async function tryConnect(kind: "keplr" | "qie") {
     try {
-      if (kind === "metamask" || kind === "qie") await connectMetaMask();
-      else await connectKeplr("keplr");
-      const name = kind === "qie" ? "QIE Wallet" : kind === "metamask" ? "MetaMask" : "Keplr";
+      if (kind === "keplr") await connectKeplr();
+      else await connectQieWallet();
+      const name = kind === "qie" ? "QIE Wallet" : "Keplr";
       toast.success(`Connected to ${name}`);
       setOpen(false);
     } catch (e: any) {
@@ -40,7 +40,7 @@ export function WalletButton() {
         <div className="flex items-center gap-2">
           {evm.address && (
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 text-sm">
-              <img src={WALLET_LOGOS.metamask} alt="EVM" className="w-4 h-4" />
+              <img src={NETWORK.logo} alt="EVM" className="w-4 h-4 rounded-full" />
               <span className="font-mono">{shorten(evm.address)}</span>
               {evm.balance && (
                 <span className="text-muted-foreground">{Number(evm.balance).toFixed(4)} {NETWORK.symbol}</span>
@@ -94,37 +94,22 @@ export function WalletButton() {
           </DialogHeader>
 
           <div className="space-y-2 pt-2">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1">EVM Wallets</div>
-            
-            {/* QIE Wallet - Official */}
             <WalletRow
               logo={NETWORK.logo}
               name="QIE Wallet"
-              sub="Official QIE wallet · EVM"
+              sub="Official QIE wallet · EVM + Cosmos"
               onClick={() => tryConnect("qie")}
             />
-            
-            {/* MetaMask */}
-            <WalletRow
-              logo={WALLET_LOGOS.metamask}
-              name="MetaMask"
-              sub="EVM wallet"
-              onClick={() => tryConnect("metamask")}
-            />
-
-            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1 pt-3">Cosmos Wallets</div>
-            
-            {/* Keplr - For staking */}
             <WalletRow
               logo={WALLET_LOGOS.keplr}
               name="Keplr"
-              sub="For staking, voting & rewards"
+              sub="Cosmos wallet · Staking & governance"
               onClick={() => tryConnect("keplr")}
             />
           </div>
 
           <p className="text-[10px] text-muted-foreground text-center pt-2">
-            EVM wallets for balance & transfers · Keplr for staking & governance
+            Connect both for full access: QIE Wallet (EVM) + Keplr (Staking)
           </p>
         </DialogContent>
       </Dialog>
