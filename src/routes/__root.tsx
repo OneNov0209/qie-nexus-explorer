@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  Outlet, createRootRouteWithContext, useRouter, HeadContent, Scripts,
+  Outlet, createRootRouteWithContext, useRouter, HeadContent, Scripts, useLocation,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -79,8 +79,10 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const location = useLocation();
+  const isHomePage = location.pathname === "/";
+
   useEffect(() => {
-    // Apply persisted theme on hydration
     try {
       const raw = localStorage.getItem("qie-theme");
       const theme = raw ? JSON.parse(raw)?.state?.theme : "dark";
@@ -88,6 +90,18 @@ function RootComponent() {
       document.documentElement.classList.add(theme === "light" ? "light" : "dark");
     } catch { document.documentElement.classList.add("dark"); }
   }, []);
+
+  if (isHomePage) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen">
+          <Outlet />
+        </div>
+        <Toaster theme="dark" />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen">
