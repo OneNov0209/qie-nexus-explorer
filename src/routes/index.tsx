@@ -1,15 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { NETWORK } from "@/data/network";
+import { NETWORK, FOOTER_LINKS } from "@/data/network";
 import { 
   Activity, Boxes, Coins, Users, Layers, Shield, 
   ArrowRight, Zap, Globe, 
   GitBranch, ExternalLink, Sparkles,
-  ChevronRight, Database
+  ChevronRight, Database, Mail, TrendingUp,
+  BarChart3, PieChart, Clock, Radio
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE } from "@/lib/api";
+import { AreaChart, Area, PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [
@@ -19,22 +21,38 @@ export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
+const CHART_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#3B82F6", "#EC4899"];
+
 function useLiveStats() {
   return useQuery({
     queryKey: ["home-stats"],
     refetchInterval: 10_000,
     queryFn: async () => {
-      const [status, vals, pool, supply] = await Promise.all([
+      const [status, vals, pool, supply, netInfo] = await Promise.all([
         cosmos.status().catch(() => null),
         cosmos.validators().catch(() => ({ validators: [] })),
         cosmos.stakingPool().catch(() => ({ pool: { bonded_tokens: "0" } })),
         cosmos.supply().catch(() => []),
+        cosmos.netInfo().catch(() => null),
       ]);
       const height = status?.sync_info?.latest_block_height ?? 0;
-      const validators = vals?.validators?.length ?? 0;
+      const validators = vals?.validators ?? [];
+      const activeVals = validators.filter((v: any) => v.status === "BOND_STATUS_BONDED").length;
       const bonded = pool?.pool?.bonded_tokens ?? pool?.bonded_tokens ?? "0";
       const supplyQ = supply?.find((s: any) => s.denom === NETWORK.denom)?.amount ?? "0";
-      return { height, validators, bonded, supply: supplyQ };
+      const stakingRatio = Number(bonded) && Number(supplyQ) ? (Number(bonded) / Number(supplyQ)) * 100 : 0;
+      const peers = netInfo?.n_peers ?? 0;
+
+      // Top validators for chart
+      const topValidators = validators
+        .sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens))
+        .slice(0, 8)
+        .map((v: any) => ({
+          name: v.description?.moniker?.slice(0, 10) || "Unknown",
+          power: Number(v.tokens) / 1e18,
+        }));
+
+      return { height, validators: validators.length, activeVals, bonded, supply: supplyQ, stakingRatio, peers, topValidators };
     },
   });
 }
@@ -68,27 +86,29 @@ function HomePage() {
 
   const stats_cards = [
     { label: "Latest Block", value: stats?.height ? Number(stats.height).toLocaleString() : "—", icon: <Database className="w-5 h-5 text-white" />, color: "from-violet-500 to-fuchsia-500" },
-    { label: "Validators", value: stats?.validators?.toLocaleString() || "—", icon: <Users className="w-5 h-5 text-white" />, color: "from-blue-500 to-cyan-500" },
+    { label: "Validators", value: `${stats?.activeVals || 0} / ${stats?.validators || 0}`, icon: <Users className="w-5 h-5 text-white" />, color: "from-blue-500 to-cyan-500" },
     { label: "Total Supply", value: stats?.supply ? formatQIE(stats.supply, 0) : "—", icon: <Coins className="w-5 h-5 text-white" />, color: "from-amber-500 to-orange-500" },
-    { label: "Bonded", value: stats?.bonded ? formatQIE(stats.bonded, 0) : "—", icon: <Layers className="w-5 h-5 text-white" />, color: "from-emerald-500 to-teal-500" },
+    { label: "Staking Ratio", value: stats?.stakingRatio ? `${stats.stakingRatio.toFixed(1)}%` : "—", icon: <Layers className="w-5 h-5 text-white" />, color: "from-emerald-500 to-teal-500" },
   ];
+
+  // Pie data for network stats
+  const pieData = stats ? [
+    { name: "Bonded", value: Number(stats.bonded) / 1e18 },
+    { name: "Liquid", value: Math.max(0, Number(stats.supply) / 1e18 - Number(stats.bonded) / 1e18) },
+  ].filter(d => d.value > 0) : [];
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* HERO SECTION */}
       <section className="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-20 flex-1 flex items-center">
-        {/* Background effects */}
         <div className="absolute inset-0">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-violet-500/20 via-fuchsia-500/10 to-transparent rounded-full blur-3xl opacity-60" />
           <div className="absolute bottom-0 right-0 w-[600px] h-[400px] bg-gradient-to-t from-cyan-500/10 to-transparent rounded-full blur-3xl opacity-40" />
           <div className="absolute top-20 left-10 w-[300px] h-[300px] bg-gradient-to-r from-amber-500/5 to-transparent rounded-full blur-3xl" />
         </div>
-
-        {/* Grid pattern */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black,transparent)]" />
 
         <div className="relative container mx-auto px-4 text-center">
-          {/* Logo */}
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -102,7 +122,6 @@ function HomePage() {
             />
           </motion.div>
 
-          {/* Live badge */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -114,7 +133,6 @@ function HomePage() {
             <span className="text-xs text-muted-foreground">Chain ID: {NETWORK.chainId}</span>
           </motion.div>
 
-          {/* Main heading */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -137,7 +155,6 @@ function HomePage() {
             Explore blocks, stake with validators, and participate in governance — all in one place.
           </motion.p>
 
-          {/* CTA Buttons */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -165,7 +182,6 @@ function HomePage() {
             </a>
           </motion.div>
 
-          {/* Live Stats */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -185,6 +201,117 @@ function HomePage() {
               </div>
             ))}
           </motion.div>
+        </div>
+      </section>
+
+      {/* CHARTS SECTION */}
+      <section className="relative py-16 md:py-20">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {/* Pie Chart - Staking Distribution */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              viewport={{ once: true }}
+              className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <PieChart className="w-5 h-5 text-violet-400" />
+                <h3 className="font-semibold text-sm">Staking Distribution</h3>
+              </div>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RePieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                      {pieData.map((_, i) => (<Cell key={i} fill={CHART_COLORS[i]} />))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                  </RePieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex justify-center gap-4 mt-2">
+                {pieData.map((d, i) => (
+                  <div key={d.name} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_COLORS[i] }} />
+                    <span className="text-[11px] text-muted-foreground">{d.name}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Area Chart - Validator Power */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              viewport={{ once: true }}
+              className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-5 h-5 text-cyan-400" />
+                <h3 className="font-semibold text-sm">Top Validators Power</h3>
+              </div>
+              <div className="h-44">
+                {stats?.topValidators?.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={stats.topValidators} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="homeAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#D946EF" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={40} />
+                      <Area type="monotone" dataKey="power" stroke="#8B5CF6" strokeWidth={2} fill="url(#homeAreaGrad)" dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full grid place-items-center text-xs text-muted-foreground">Loading...</div>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Stats Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              viewport={{ once: true }}
+              className="relative rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Radio className="w-5 h-5 text-amber-400" />
+                <h3 className="font-semibold text-sm">Network Pulse</h3>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Peers</span><span className="font-bold text-cyan-400">{stats?.peers || "—"}</span></div>
+                  <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" style={{ width: `${Math.min((stats?.peers || 0) / 50 * 100, 100)}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Active Validators</span><span className="font-bold text-emerald-400">{stats?.activeVals || 0}/{stats?.validators || 0}</span></div>
+                  <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style={{ width: `${stats?.validators ? (stats.activeVals / stats.validators) * 100 : 0}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Staking Ratio</span><span className="font-bold text-violet-400">{stats?.stakingRatio?.toFixed(1) || "0"}%</span></div>
+                  <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full" style={{ width: `${Math.min(stats?.stakingRatio || 0, 100)}%` }} />
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-border/30">
+                  <div className="flex justify-between text-xs"><span className="text-muted-foreground">Chain Height</span><span className="font-mono font-bold text-white">{stats?.height ? Number(stats.height).toLocaleString() : "—"}</span></div>
+                </div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Supply</span><span className="font-mono font-bold text-white">{stats?.supply ? formatQIE(stats.supply, 0) : "—"}</span></div>
+              </div>
+            </motion.div>
+          </div>
         </div>
       </section>
 
@@ -255,35 +382,55 @@ function HomePage() {
       </section>
 
       {/* FOOTER */}
-      <footer className="border-t border-border/40 py-8 mt-auto">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+      <footer className="mt-auto border-t border-border/60 bg-background/40 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-5 gap-8">
+          <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-3">
-              <img src={NETWORK.logo} alt="QIE" className="w-8 h-8 rounded-full" />
+              <img src={NETWORK.logo} className="w-10 h-10 rounded-full ring-1 ring-primary/40" alt="" />
               <div>
-                <p className="text-sm font-medium">QIE Explorer</p>
-                <p className="text-xs text-muted-foreground">Hybrid Cosmos + EVM Network</p>
+                <div className="font-semibold gradient-text text-lg">QIE Explorer</div>
+                <div className="text-xs text-muted-foreground">Mainnet · Chain {NETWORK.chainId}</div>
               </div>
             </div>
-
-            <div className="flex items-center gap-6 text-xs text-muted-foreground">
-              <a href="https://www.qie.digital/" target="_blank" rel="noreferrer" className="hover:text-violet-400 transition-colors">QIE Digital</a>
-              <a href="https://docs.qie.digital/" target="_blank" rel="noreferrer" className="hover:text-violet-400 transition-colors">Documentation</a>
-              <a href="https://github.com/qieadmin" target="_blank" rel="noreferrer" className="hover:text-violet-400 transition-colors">GitHub</a>
-              <a href="https://discord.com/invite/8DD4kSHBvr" target="_blank" rel="noreferrer" className="hover:text-violet-400 transition-colors">Discord</a>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>© {new Date().getFullYear()} QIE Blockchain</span>
-              <span>·</span>
-              <span>Powered by</span>
+            <p className="text-xs text-muted-foreground mt-4 leading-relaxed">
+              Hybrid Cosmos + EVM block explorer for the QIE ecosystem.
+            </p>
+            <a href={`mailto:${FOOTER_LINKS.email}`} className="mt-4 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
+              <Mail className="w-3.5 h-3.5" /> {FOOTER_LINKS.email}
+            </a>
+            <p className="text-xs text-muted-foreground mt-3">
+              Powered by{" "}
               <a href="https://onenov.xyz" target="_blank" rel="noreferrer" className="text-violet-400 hover:text-violet-300 transition-colors font-medium">
                 OneNov
               </a>
-            </div>
+            </p>
           </div>
+          <FCol title="Products" items={FOOTER_LINKS.products} />
+          <FCol title="Developers" items={FOOTER_LINKS.developers} />
+          <FCol title="Community" items={FOOTER_LINKS.community} />
+          <FCol title="Hackathon" items={FOOTER_LINKS.hackathon} />
+        </div>
+        <div className="border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
+          © {new Date().getFullYear()} QIE Blockchain. All rights reserved.
         </div>
       </footer>
+    </div>
+  );
+}
+
+function FCol({ title, items }: { title: string; items: { label: string; href: string }[] }) {
+  return (
+    <div>
+      <div className="text-sm font-semibold mb-3">{title}</div>
+      <ul className="space-y-2">
+        {items.map((i) => (
+          <li key={i.href}>
+            <a href={i.href} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-primary transition">
+              {i.label}
+            </a>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
