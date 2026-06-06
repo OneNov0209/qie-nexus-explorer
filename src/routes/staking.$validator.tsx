@@ -318,29 +318,29 @@ function ValidatorDetail() {
 
       {/* Staking Modal */}
       <StakingModal
-        open={stakingModalOpen}
-        onClose={() => setStakingModalOpen(false)}
-        validatorAddress={operatorAddr}
-        validatorMoniker={moniker}
-        validatorIdentity={identity}
-        validatorCommission={comm}
-        validatorAPR={vp > 0 ? vp * (1 - comm) : 0}
-        userStake={Number(myStake) / 1e18}
-        userBalance={Number(userBalance) / 1e18}
-        userRewards={Number(myRewardQ) / 1e18}
-        allValidators={allVals
-          .filter((x: any) => x.status === "BOND_STATUS_BONDED")
-          .map((x: any) => ({
-            address: x.operator_address,
-            moniker: x.description?.moniker || shorten(x.operator_address, 10, 6),
-            identity: x.description?.identity,
-          }))
-        }
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ["user-staking-validator"] });
-          qc.invalidateQueries({ queryKey: ["validator-detail"] });
-        }}
-      />
+  open={stakingModalOpen}
+  onClose={() => setStakingModalOpen(false)}
+  validatorAddress={operatorAddr}
+  validatorMoniker={moniker}
+  validatorIdentity={identity}
+  validatorCommission={comm}
+  validatorAPR={vp > 0 ? vp * (1 - comm) : 0}
+  userStake={Number(myStake)}          // raw aqie, jangan dibagi
+  userBalance={Number(userBalance)}    // raw aqie, jangan dibagi
+  userRewards={Number(myRewardQ)}      // raw aqie, jangan dibagi
+  allValidators={allVals
+    .filter((x: any) => x.status === "BOND_STATUS_BONDED")
+    .map((x: any) => ({
+      address: x.operator_address,
+      moniker: x.description?.moniker || shorten(x.operator_address, 10, 6),
+      identity: x.description?.identity,
+    }))
+  }
+  onSuccess={() => {
+    qc.invalidateQueries({ queryKey: ["user-staking-validator"] });
+    qc.invalidateQueries({ queryKey: ["validator-detail"] });
+  }}
+/>
     </div>
   );
 }
