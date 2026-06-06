@@ -1,17 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten, evmRpc } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
 import { useState, useMemo } from "react";
-import { useWallet, connectMetaMask, connectKeplr } from "@/lib/wallet";
+import { useWallet } from "@/lib/wallet";
 import { toast } from "sonner";
-import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Wallet, Send, Coins, ArrowDownLeft, ArrowUpRight, Layers,
+  Wallet, Coins, ArrowDownLeft, ArrowUpRight, Layers,
   Copy, Check, TrendingUp, Clock, Gift, FileText,
-  BarChart3, LogOut, Loader2, Plus, ExternalLink
+  ExternalLink
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -27,63 +25,44 @@ export const Route = createFileRoute("/address/$address")({
 });
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444"];
-type Action = "Delegate" | "Redelegate" | "Undelegate";
 
 function AddressDetail() {
   const { address } = Route.useParams();
-  const { cosmos: cw, evm: ew, disconnectEvm, disconnectCosmos } = useWallet() as any;
-  const qc = useQueryClient();
+  const { cosmos: cw, evm: ew } = useWallet() as any;
   const [copied, setCopied] = useState<string | null>(null);
-  const [claiming, setClaiming] = useState(false);
-  const [modal, setModal] = useState<{ type: Action; val: any } | null>(null);
-  const [amount, setAmount] = useState("");
-  const [dstVal, setDstVal] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [connecting, setConnecting] = useState<string | null>(null);
   const isOwn = cw?.address === address || ew?.address === address;
   const isEvmAddr = address.startsWith("0x");
   const isValidator = address.startsWith("qievaloper");
 
-  // ========== WALLET CONNECTION ==========
-  async function handleConnect(kind: "metamask" | "keplr") {
-    setConnecting(kind);
-    try {
-      if (kind === "metamask") await connectMetaMask();
-      else await connectKeplr("keplr");
-      toast.success(`Connected to ${kind === "metamask" ? "MetaMask" : "Keplr"}`);
-      qc.invalidateQueries({ queryKey: ["bal", address] });
-      qc.invalidateQueries({ queryKey: ["dels", address] });
-      qc.invalidateQueries({ queryKey: ["rewards", address] });
-    } catch (e: any) {
-      toast.error(e?.message ?? "Connection failed");
-    } finally {
-      setConnecting(null);
-    }
-  }
-
-  // ========== COSMOS DATA ==========
+  // Balance
   const { data: balance } = useQuery({
     queryKey: ["bal", address],
     queryFn: () => cosmos.balance(address).catch(() => ({ balances: [] })),
     refetchInterval: 30_000,
   });
+
+  // Delegations
   const { data: dels } = useQuery({
     queryKey: ["dels", address],
     queryFn: () => cosmos.delegations(address).catch(() => ({ delegation_responses: [] })),
     refetchInterval: 30_000,
   });
+
+  // Rewards
   const { data: rewards } = useQuery({
     queryKey: ["rewards", address],
     queryFn: () => cosmos.rewards(address).catch(() => ({ rewards: [], total: [] })),
     refetchInterval: 30_000,
   });
+
+  // Unbonding
   const { data: unb } = useQuery({
     queryKey: ["unb", address],
     queryFn: () => cosmos.unbonding(address).catch(() => ({ unbonding_responses: [] })),
     refetchInterval: 30_000,
   });
 
-  // ========== EVM DATA ==========
+  // EVM data
   const { data: evmData } = useQuery({
     queryKey: ["evm-addr", address],
     enabled: isEvmAddr,
@@ -101,7 +80,7 @@ function AddressDetail() {
     },
   });
 
-  // Recent TXs
+  // Recent TXs (Cosmos)
   const { data: txData } = useQuery({
     queryKey: ["tx-search", address],
     queryFn: async () => {
@@ -125,6 +104,7 @@ function AddressDetail() {
     enabled: !isEvmAddr,
   });
 
+  // EVM recent TXs
   const { data: evmTxs } = useQuery({
     queryKey: ["evm-txs", address],
     queryFn: async () => {
@@ -148,7 +128,6 @@ function AddressDetail() {
     enabled: isEvmAddr,
   });
 
-  // ========== COMPUTED ==========
   const available = Number(balance?.balances?.find((b: any) => b.denom === NETWORK.denom)?.amount ?? 0);
   const delegations = dels?.delegation_responses ?? [];
   const delegated = delegations.reduce((s: number, d: any) => s + Number(d.balance?.amount ?? 0), 0);
@@ -178,50 +157,6 @@ function AddressDetail() {
   ].filter(d => d.value > 0);
 
   const delChart = enrichedDels.slice().sort((a, b) => b.amount - a.amount).slice(0, 10).map(d => ({ name: d.moniker || shorten(d.valoper, 6, 4), amount: d.amount / 1e18 }));
-  const validatorsWithRewards = (rewards?.rewards ?? []).filter((r: any) => Number(r.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? 0) > 0).map((r: any) => r.validator_address);
-
-  // ========== ACTIONS ==========
-  function openModal(type: Action, val: any) {
-    if (!cw.address) return toast.error("Connect Keplr wallet first");
-    setModal({ type, val });
-    setAmount("");
-    setDstVal("");
-  }
-
-  async function submit() {
-    if (!modal) return;
-    const { type, val } = modal;
-    if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount");
-    if (type === "Redelegate" && !dstVal) return toast.error("Pick destination validator");
-    setBusy(true);
-    try {
-      let res;
-      if (type === "Delegate") res = await delegate(val.valoper, amount);
-      else if (type === "Undelegate") res = await undelegate(val.valoper, amount);
-      else res = await redelegate(val.valoper, dstVal, amount);
-      toast.success(`${type} success`, { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
-      setModal(null);
-      qc.invalidateQueries({ queryKey: ["bal", address] });
-      qc.invalidateQueries({ queryKey: ["dels", address] });
-      qc.invalidateQueries({ queryKey: ["rewards", address] });
-    } catch (e: any) {
-      toast.error(`${type} failed`, { description: e?.message ?? String(e) });
-    } finally { setBusy(false); }
-  }
-
-  async function claimAll() {
-    if (!cw.address) return toast.error("Connect Keplr wallet first");
-    if (!validatorsWithRewards.length) return toast.error("No rewards to claim");
-    setClaiming(true);
-    try {
-      const res = await withdrawAllRewards(validatorsWithRewards);
-      toast.success("Rewards claimed", { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
-      qc.invalidateQueries({ queryKey: ["rewards", address] });
-      qc.invalidateQueries({ queryKey: ["bal", address] });
-    } catch (e: any) {
-      toast.error("Claim failed", { description: e?.message ?? String(e) });
-    } finally { setClaiming(false); }
-  }
 
   function copy(val: string) { navigator.clipboard.writeText(val); setCopied(val); setTimeout(() => setCopied(null), 1500); }
 
@@ -230,48 +165,7 @@ function AddressDetail() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* ===== MULTI-WALLET STATUS BAR ===== */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs uppercase tracking-wider text-muted-foreground">Connected Wallets:</span>
-
-          {/* MetaMask Status */}
-          {ew.address ? (
-            <div className="flex items-center gap-2 glass rounded-xl px-3 py-1.5 text-sm">
-              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/metamask.png" alt="MetaMask" className="w-5 h-5" />
-              <span className="font-mono text-xs">{shorten(ew.address)}</span>
-              <span className="text-emerald-400 text-xs">{Number(ew.balance || 0).toFixed(4)} {NETWORK.symbol}</span>
-              <button onClick={disconnectEvm} className="text-muted-foreground hover:text-red-400"><LogOut className="w-3.5 h-3.5" /></button>
-            </div>
-          ) : (
-            <button onClick={() => handleConnect("metamask")} disabled={connecting === "metamask"}
-              className="flex items-center gap-1.5 glass rounded-xl px-3 py-1.5 text-sm hover:bg-white/10 transition text-muted-foreground">
-              {connecting === "metamask" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/metamask.png" alt="MetaMask" className="w-4 h-4 opacity-50" />
-              MetaMask
-            </button>
-          )}
-
-          {/* Keplr Status */}
-          {cw.address ? (
-            <div className="flex items-center gap-2 glass rounded-xl px-3 py-1.5 text-sm">
-              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/keplr.png" alt="Keplr" className="w-5 h-5" />
-              <span className="font-mono text-xs">{shorten(cw.address)}</span>
-              {cw.balance && <span className="text-emerald-400 text-xs">{cw.balance} {NETWORK.symbol}</span>}
-              <button onClick={disconnectCosmos} className="text-muted-foreground hover:text-red-400"><LogOut className="w-3.5 h-3.5" /></button>
-            </div>
-          ) : (
-            <button onClick={() => handleConnect("keplr")} disabled={connecting === "keplr"}
-              className="flex items-center gap-1.5 glass rounded-xl px-3 py-1.5 text-sm hover:bg-white/10 transition text-muted-foreground">
-              {connecting === "keplr" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/keplr.png" alt="Keplr" className="w-4 h-4 opacity-50" />
-              Keplr
-            </button>
-          )}
-        </div>
-      </Card>
-
-      {/* ===== HEADER CARD ===== */}
+      {/* Header Card */}
       <Card className="p-6">
         <div className="flex items-start gap-4 flex-wrap">
           <div className={`h-14 w-14 rounded-2xl grid place-items-center shrink-0 ring-2 ${evmData?.isContract ? "bg-cyan-500/10 ring-cyan-500/30 text-cyan-400" : isValidator ? "bg-violet-500/10 ring-violet-500/30 text-violet-400" : "bg-blue-500/10 ring-blue-500/30 text-blue-400"}`}>
@@ -285,21 +179,22 @@ function AddressDetail() {
             </div>
             {isValidator && <Link to="/staking/$validator" params={{ validator: address }} className="text-xs text-primary hover:underline mt-2 inline-block">View validator profile →</Link>}
           </div>
-          {/* Action buttons */}
+          {/* Keplr CTA */}
           {isOwn && cw.address && (
-            <div className="flex flex-wrap gap-2">
-              <button onClick={claimAll} disabled={claiming || !validatorsWithRewards.length}
-                className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 disabled:opacity-50 hover:shadow-lg hover:shadow-violet-500/25 transition-all">
-                {claiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-                Claim All Rewards
-              </button>
-            </div>
+            <a
+              href="https://wallet.keplr.app/chains/qie"
+              target="_blank"
+              rel="noreferrer"
+              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 hover:shadow-lg hover:shadow-violet-500/25 transition-all"
+            >
+              <Gift className="w-4 h-4" />
+              Claim in Keplr
+            </a>
           )}
         </div>
       </Card>
 
-      {/* ===== STATS ===== */}
-      {/* Cosmos Stats */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Available" value={formatQIE(available, 2)} sub={NETWORK.symbol} />
         <Stat label="Delegated" value={formatQIE(delegated, 2)} sub={NETWORK.symbol} />
@@ -307,7 +202,6 @@ function AddressDetail() {
         <Stat label="Rewards" value={formatQIE(totalRewards, 4)} sub={NETWORK.symbol} />
       </div>
 
-      {/* EVM Stats */}
       {isEvmAddr && evmData && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Stat label="EVM Balance" value={`${evmData.balance} ${NETWORK.symbol}`} />
@@ -316,7 +210,7 @@ function AddressDetail() {
         </div>
       )}
 
-      {/* ===== CHARTS ===== */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3"><h2 className="font-semibold">Portfolio Breakdown</h2><span className="text-xs font-mono text-muted-foreground">{formatQIE(totalPortfolio, 2)} {NETWORK.symbol}</span></div>
@@ -349,7 +243,7 @@ function AddressDetail() {
         </Card>
       </div>
 
-      {/* ===== DELEGATIONS WITH ACTIONS ===== */}
+      {/* Delegations */}
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Layers className="h-4 w-4 text-violet-400" /> Delegations</h2><span className="text-xs text-muted-foreground">{enrichedDels.length}</span></div>
         <div className="divide-y divide-border">
@@ -363,11 +257,14 @@ function AddressDetail() {
               <div className="flex items-center gap-2">
                 <div className="text-right"><div className="font-mono text-xs font-medium">{formatQIE(d.amount, 2)}</div><div className="text-[10px] text-muted-foreground">{delegated > 0 ? ((d.amount / delegated) * 100).toFixed(2) : 0}%</div></div>
                 {isOwn && cw.address && (
-                  <div className="flex gap-1">
-                    <button onClick={() => openModal("Delegate", d)} className="text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg px-2 py-1 transition-colors">Del</button>
-                    <button onClick={() => openModal("Redelegate", d)} className="text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg px-2 py-1 transition-colors">Re-Del</button>
-                    <button onClick={() => openModal("Undelegate", d)} className="text-[10px] bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg px-2 py-1 transition-colors">Un-Del</button>
-                  </div>
+                  <a
+                    href="https://wallet.keplr.app/chains/qie"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg px-2 py-1 transition-colors flex items-center gap-1"
+                  >
+                    Stake <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
                 )}
               </div>
             </div>
@@ -375,7 +272,7 @@ function AddressDetail() {
         </div>
       </Card>
 
-      {/* ===== REWARDS ===== */}
+      {/* Rewards */}
       {rewards?.rewards?.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Gift className="h-4 w-4 text-pink-400" /> Rewards</h2><span className="text-xs font-mono text-pink-400">{formatQIE(totalRewards, 6)} {NETWORK.symbol}</span></div>
@@ -388,7 +285,7 @@ function AddressDetail() {
         </Card>
       )}
 
-      {/* ===== UNBONDING ===== */}
+      {/* Unbonding */}
       {unb?.unbonding_responses?.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Clock className="h-4 w-4 text-amber-400" /> Unbonding</h2></div>
@@ -402,7 +299,7 @@ function AddressDetail() {
         </Card>
       )}
 
-      {/* ===== RECENT TRANSACTIONS (COSMOS) ===== */}
+      {/* Recent Transactions - Cosmos */}
       {txData && txData.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold">Recent Transactions</h2><span className="text-xs text-muted-foreground">{txData.length}</span></div>
@@ -429,7 +326,7 @@ function AddressDetail() {
         </Card>
       )}
 
-      {/* ===== RECENT EVM TRANSACTIONS ===== */}
+      {/* Recent Transactions - EVM */}
       {evmTxs && evmTxs.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold">Recent EVM Transactions</h2><span className="text-xs text-muted-foreground">{evmTxs.length}</span></div>
@@ -446,38 +343,6 @@ function AddressDetail() {
           </div>
         </Card>
       )}
-
-      {/* ===== ACTION DIALOG ===== */}
-      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
-        <DialogContent className="border-border max-w-md">
-          <DialogHeader><DialogTitle>{modal?.type} — {modal?.val?.moniker || shorten(modal?.val?.valoper, 10, 6)}</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="text-xs text-muted-foreground">Validator: <span className="font-mono">{shorten(modal?.val?.valoper ?? "", 14, 10)}</span></div>
-            {modal?.type === "Redelegate" && (
-              <div>
-                <label className="text-xs text-muted-foreground">Destination Validator</label>
-                <select value={dstVal} onChange={(e) => setDstVal(e.target.value)} className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1">
-                  <option value="">Select validator…</option>
-                  {enrichedDels.filter((x: any) => x.valoper !== modal.val.valoper).map((x: any) => (<option key={x.valoper} value={x.valoper}>{x.moniker || shorten(x.valoper, 10, 6)}</option>))}
-                </select>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-muted-foreground flex justify-between">
-                <span>Amount ({NETWORK.symbol})</span>
-                {modal?.type === "Delegate" ? <span>Available: {formatQIE(available, 4)}</span> : <span>Staked: {formatQIE(modal?.val?.amount ?? 0, 4)}</span>}
-              </label>
-              <input type="number" step="0.0001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1" />
-            </div>
-          </div>
-          <DialogFooter>
-            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30">Cancel</button>
-            <button onClick={submit} disabled={busy} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
-              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Confirm {modal?.type}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
