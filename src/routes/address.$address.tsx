@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-  Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  AreaChart, Area
+  Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from "recharts";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+dayjs.extend(relativeTime);
 
 export const Route = createFileRoute("/address/$address")({
   head: ({ params }) => ({ meta: [{ title: `Address ${shorten(params.address)} — QIE Explorer` }] }),
@@ -26,7 +28,7 @@ const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4
 
 function AddressDetail() {
   const { address } = Route.useParams();
-  const { cosmos: cw, evm: ew, setCosmos, setEvm } = useWallet() as any;
+  const { cosmos: cw, evm: ew } = useWallet() as any;
   const [copied, setCopied] = useState<string | null>(null);
   const isOwn = cw?.address === address || ew?.address === address;
   const isEvmAddr = address.startsWith("0x");
@@ -86,6 +88,81 @@ function AddressDetail() {
       fetch(`${NETWORK.rest}/cosmos/auth/v1beta1/accounts/${address}`)
         .then(r => r.json())
         .catch(() => null),
+  });
+
+  // Recent transactions via Tendermint tx_search
+  const { data: txData } = useQuery({
+    queryKey: ["tx-search", address],
+    queryFn: async () => {
+      try {
+        const encoded = encodeURIComponent(address);
+        const [sent, recv] = await Promise.all([
+          fetch(`/api/rpc/tx_search?query=%22message.sender=%27${encoded}%27%22&per_page=25&order_by=%22desc%22`).then(r => r.json()).catch(() => ({ result: { txs: [] } })),
+          fetch(`/api/rpc/tx_search?query=%22transfer.recipient=%27${encoded}%27%22&per_page=25&order_by=%22desc%22`).then(r => r.json()).catch(() => ({ result: { txs: [] } })),
+        ]);
+
+        const all = [
+          ...(sent?.result?.txs ?? []).map((t: any) => ({ ...t, _dir: "out" as const })),
+          ...(recv?.result?.txs ?? []).map((t: any) => ({ ...t, _dir: "in" as const })),
+        ];
+
+        const seen = new Set<string>();
+        const dedup = all.filter(t => {
+          if (seen.has(t.hash)) return false;
+          seen.add(t.hash);
+          return true;
+        });
+
+        dedup.sort((a, b) => Number(b.height) - Number(a.height));
+        return dedup.slice(0, 30);
+      } catch {
+        return [];
+      }
+    },
+    refetchInterval: 30_000,
+    enabled: !isEvmAddr,
+  });
+
+  // EVM recent transactions
+  const { data: evmTxs } = useQuery({
+    queryKey: ["evm-txs", address],
+    queryFn: async () => {
+      try {
+        const latestBlock = await evmRpc<string>("eth_blockNumber", []);
+        const latest = parseInt(latestBlock, 16);
+        const txPromises = [];
+        for (let i = 0; i < Math.min(20, latest); i++) {
+          txPromises.push(
+            evmRpc<any>("eth_getBlockByNumber", ["0x" + (latest - i).toString(16), true]).catch(() => null)
+          );
+        }
+        const blocks = await Promise.all(txPromises);
+        const txs: any[] = [];
+        for (const block of blocks) {
+          if (!block?.transactions) continue;
+          for (const tx of block.transactions) {
+            if (tx.from?.toLowerCase() === address.toLowerCase() || tx.to?.toLowerCase() === address.toLowerCase()) {
+              txs.push({
+                hash: tx.hash,
+                blockNumber: parseInt(block.number, 16),
+                time: parseInt(block.timestamp, 16) * 1000,
+                from: tx.from,
+                to: tx.to,
+                value: Number(BigInt(tx.value)) / 1e18,
+                type: tx.from?.toLowerCase() === address.toLowerCase() ? "out" : "in",
+              });
+            }
+            if (txs.length >= 30) break;
+          }
+          if (txs.length >= 30) break;
+        }
+        return txs;
+      } catch {
+        return [];
+      }
+    },
+    refetchInterval: 30_000,
+    enabled: isEvmAddr,
   });
 
   const available = Number(
@@ -152,6 +229,10 @@ function AddressDetail() {
     setCopied(val);
     setTimeout(() => setCopied(null), 1500);
   }
+
+  const isLoading = !balance && !dels;
+
+  if (isLoading) return <Loading />;
 
   return (
     <div className="space-y-6 pb-8">
@@ -349,6 +430,103 @@ function AddressDetail() {
                   </div>
                 ))}
               </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Recent Transactions - Cosmos (via Tendermint tx_search) */}
+      {txData && txData.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <h2 className="font-semibold">Recent Transactions</h2>
+            <span className="text-xs text-muted-foreground">{txData.length}</span>
+          </div>
+          <div className="divide-y divide-border">
+            {txData.map((t: any) => {
+              const events = t.tx_result?.events ?? [];
+              const msgEvent = events.find((e: any) => e.type === "message" && e.attributes?.find((a: any) => a.key === "action"));
+              const action = msgEvent?.attributes?.find((a: any) => a.key === "action")?.value ?? "Tx";
+              const msgType = action.split(".").pop()?.replace("Msg", "") ?? action;
+              const success = t.tx_result?.code === 0 || t.tx_result?.code === undefined;
+              const fee = events.find((e: any) => e.type === "tx")?.attributes?.find((a: any) => a.key === "fee")?.value;
+              const dir = t._dir;
+
+              return (
+                <Link
+                  key={t.hash}
+                  to="/tx/$hash"
+                  params={{ hash: t.hash }}
+                  className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-muted/30 transition"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 ${
+                      dir === "in" ? "bg-emerald-500/10 text-emerald-400" : "bg-violet-500/10 text-violet-400"
+                    }`}>
+                      {dir === "in" ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <span>{msgType}</span>
+                        {!success && <Pill variant="danger">Failed</Pill>}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground font-mono truncate">
+                        {shorten(t.hash, 10, 8)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-mono">#{Number(t.height).toLocaleString()}</div>
+                    {fee && (
+                      <div className="text-[10px] text-muted-foreground">
+                        {formatQIE(fee.replace("aqie", ""), 4)} {NETWORK.symbol}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Recent Transactions - EVM */}
+      {evmTxs && evmTxs.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <h2 className="font-semibold">Recent EVM Transactions</h2>
+            <span className="text-xs text-muted-foreground">{evmTxs.length}</span>
+          </div>
+          <div className="divide-y divide-border">
+            {evmTxs.map((tx: any, i: number) => (
+              <Link
+                key={i}
+                to="/tx/$hash"
+                params={{ hash: tx.hash }}
+                className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-muted/30 transition"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 ${
+                    tx.type === "in" ? "bg-emerald-500/10 text-emerald-400" : "bg-violet-500/10 text-violet-400"
+                  }`}>
+                    {tx.type === "in" ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {tx.type === "in" ? "Receive" : "Send"}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-mono truncate">
+                      {shorten(tx.hash, 10, 8)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xs font-mono">#{tx.blockNumber.toLocaleString()}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {tx.value.toFixed(4)} {NETWORK.symbol}
+                  </div>
+                </div>
+              </Link>
             ))}
           </div>
         </Card>
