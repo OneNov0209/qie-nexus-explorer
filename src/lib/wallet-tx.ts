@@ -1,11 +1,7 @@
 /**
  * Cosmos transaction helpers for QIE (Ethermint-based: coinType 60, eth_secp256k1).
  *
- * IMPORTANT: Staking operations (delegate, undelegate, redelegate, withdraw rewards,
- * vote) are ONLY available via Cosmos wallet (QIE Wallet Cosmos mode / Keplr).
- * MetaMask & QIE Wallet EVM mode are for EVM transfers only - NOT for staking.
- *
- * Uses offline signer (signAmino) + REST API broadcast via proxy.
+ * Uses Keplr's signDirect + REST API broadcast via proxy.
  * No WebSocket needed, no CORS issues.
  */
 import { NETWORK } from "@/data/network";
@@ -29,103 +25,106 @@ export function toMicro(qie: string | number): string {
   return (BigInt(Math.floor(n * 1e6)) * BigInt(1e12)).toString();
 }
 
-async function getSignerAndAddress(): Promise<{ signer: any; address: string }> {
+async function getKeplr() {
   const w = window as any;
-  // QIE Wallet exposes keplr API for Cosmos operations, qie API for EVM
-  const keplrApi = w.keplr;
-  const qieApi = w.qie;
-
-  if (!keplrApi && !qieApi) {
-    throw new Error("No Cosmos wallet detected. Please install QIE Wallet or Keplr for staking.");
-  }
-
-  // Enable chain - QIE Wallet uses its own enable, Keplr uses keplr.enable
-  if (qieApi) {
-    await qieApi.enable(NETWORK.cosmosChainId);
-  } else if (keplrApi) {
-    await keplrApi.enable(NETWORK.cosmosChainId);
-  }
-
-  // Use keplr API for signing (QIE Wallet mirrors keplr API)
-  const signer = keplrApi.getOfflineSignerOnlyAmino
-    ? keplrApi.getOfflineSignerOnlyAmino(NETWORK.cosmosChainId)
-    : keplrApi.getOfflineSigner(NETWORK.cosmosChainId);
-
-  const accounts = await signer.getAccounts();
-  if (!accounts[0]) throw new Error("No account found in wallet");
-
-  return { signer, address: accounts[0].address };
+  const keplr = w.keplr;
+  if (!keplr) throw new Error("Keplr not detected. Please install Keplr for staking.");
+  await keplr.enable(NETWORK.cosmosChainId);
+  return keplr;
 }
 
-const DEFAULT_FEE = {
-  amount: [{ denom: NETWORK.denom, amount: "6250000000000000" }],
-  gas: "250000",
-};
+// Build Amino message JSON (Ethermint requires Amino format)
+function buildAminoMsg(type: string, value: any) {
+  return { type, value };
+}
 
-async function signAndBroadcast(
-  address: string,
-  messages: any[],
-  memo: string,
-  signer: any
-): Promise<DeliverTxResponse> {
-  // Fetch account info for sequence number
+// Build SignDoc for signDirect
+function buildSignDoc(address: string, accountNumber: string, sequence: string, msgs: any[], fee: any, memo: string) {
+  const bodyBytes = encodeBodyBytes(msgs, memo);
+  const authInfoBytes = encodeAuthInfoBytes(fee);
+  
+  return {
+    chainId: NETWORK.cosmosChainId,
+    accountNumber: accountNumber,
+    authInfoBytes: authInfoBytes,
+    bodyBytes: bodyBytes,
+  };
+}
+
+// Simple body encoding (Amino JSON)
+function encodeBodyBytes(msgs: any[], memo: string): Uint8Array {
+  const bodyJson = JSON.stringify({ messages: msgs, memo });
+  return new TextEncoder().encode(bodyJson);
+}
+
+function encodeAuthInfoBytes(fee: any): Uint8Array {
+  return new Uint8Array(0); // Will be filled by Keplr
+}
+
+async function signAndBroadcast(msgs: any[], memo: string): Promise<DeliverTxResponse> {
+  const keplr = await getKeplr();
+  const key = await keplr.getKey(NETWORK.cosmosChainId);
+  const address = key.bech32Address;
+
+  // Fetch account info
   const accRes = await fetch(`/api/rest/cosmos/auth/v1beta1/accounts/${address}`).then(r => r.json());
   const baseAccount = accRes?.account?.base_account || accRes?.account;
   const accountNumber = String(baseAccount?.account_number || 0);
   const sequence = String(baseAccount?.sequence || 0);
 
-  // Build sign doc
+  // Build amino messages
+  const aminoMsgs = msgs.map(m => {
+    if (m.typeUrl) {
+      const type = m.typeUrl.replace("/cosmos.staking.v1beta1.", "cosmos-sdk/").replace("/cosmos.distribution.v1beta1.", "cosmos-sdk/").replace("/cosmos.gov.v1beta1.", "cosmos-sdk/");
+      return buildAminoMsg(type, {
+        delegator_address: m.value.delegatorAddress || m.value.delegator_address,
+        validator_address: m.value.validatorAddress || m.value.validator_address,
+        validator_src_address: m.value.validatorSrcAddress || m.value.validator_src_address,
+        validator_dst_address: m.value.validatorDstAddress || m.value.validator_dst_address,
+        amount: m.value.amount,
+        proposal_id: m.value.proposalId?.toString(),
+        voter: m.value.voter,
+        option: m.value.option,
+      });
+    }
+    return m;
+  });
+
+  const fee = { amount: [{ denom: NETWORK.denom, amount: "6250000000000000" }], gas: "250000" };
+
+  // Sign with signDirect
   const signDoc = {
-    chain_id: NETWORK.cosmosChainId,
-    account_number: accountNumber,
-    sequence: sequence,
-    fee: DEFAULT_FEE,
-    msgs: messages,
-    memo: memo,
+    chainId: NETWORK.cosmosChainId,
+    accountNumber: accountNumber,
+    authInfoBytes: new Uint8Array([18, 11, 10, 9, 10, 4, 97, 113, 105, 101, 18, 1, 48]), // basic auth info
+    bodyBytes: encodeBodyBytes(aminoMsgs, memo),
   };
 
-  // Sign with wallet (Amino signing for Ethermint compatibility)
-  const signResponse = await signer.signAmino(address, signDoc);
+  const signResult = await keplr.signDirect(NETWORK.cosmosChainId, address, signDoc);
 
-  // Build signed transaction
+  // Build signed tx for broadcast
   const signedTx = {
-    msg: messages,
-    fee: DEFAULT_FEE,
-    signatures: [
-      {
-        pub_key: {
-          type: "tendermint/PubKeySecp256k1",
-          value: signResponse.signature.pub_key?.value || "",
-        },
-        signature: signResponse.signature.signature || signResponse.signature,
-      },
-    ],
-    memo: memo,
+    body_bytes: Buffer.from(signResult.signed.bodyBytes).toString("base64"),
+    auth_info_bytes: Buffer.from(signResult.signed.authInfoBytes).toString("base64"),
+    signatures: [Buffer.from(signResult.signature.signature, "base64").toString("base64")],
   };
 
-  // Encode to base64
-  const txBytes = btoa(JSON.stringify(signedTx));
+  const txBytes = Buffer.from(JSON.stringify({
+    body: { messages: aminoMsgs, memo },
+    auth_info: { signer_infos: [], fee },
+    signatures: [signResult.signature.signature],
+  })).toString("base64");
 
-  // Broadcast via REST API proxy
+  // Broadcast via REST
   const broadcastRes = await fetch(`/api/rest/cosmos/tx/v1beta1/txs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tx_bytes: txBytes,
-      mode: "BROADCAST_MODE_SYNC",
-    }),
+    body: JSON.stringify({ tx_bytes: txBytes, mode: "BROADCAST_MODE_SYNC" }),
   });
 
   const data = await broadcastRes.json();
-
-  // Check for transaction errors
   if (data?.tx_response?.code !== undefined && data.tx_response.code !== 0) {
-    throw new Error(data.tx_response.raw_log || "Transaction failed");
-  }
-
-  // Check for broadcast errors
-  if (data?.code && data?.code !== 0) {
-    throw new Error(data?.message || "Broadcast failed");
+    throw new Error(data.tx_response.raw_log || "Tx failed");
   }
 
   return {
@@ -134,93 +133,55 @@ async function signAndBroadcast(
     gasUsed: Number(data?.tx_response?.gas_used || 0),
     gasWanted: Number(data?.tx_response?.gas_wanted || 0),
     height: Number(data?.tx_response?.height || 0),
-    rawLog: data?.tx_response?.raw_log || "",
+    rawLog: "",
   };
 }
 
-/**
- * Delegate QIE tokens to a validator
- * Requires: QIE Wallet (Cosmos mode) or Keplr connected
- */
 export async function delegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
-  const { signer, address } = await getSignerAndAddress();
-  const msg = {
-    type: "cosmos-sdk/MsgDelegate",
+  return signAndBroadcast([{
+    typeUrl: "/cosmos.staking.v1beta1.MsgDelegate",
     value: {
-      delegator_address: address,
-      validator_address: validator,
+      delegatorAddress: "",
+      validatorAddress: validator,
       amount: coin(toMicro(qieAmount)),
     },
-  };
-  return signAndBroadcast(address, [msg], "Delegate via QIE Explorer", signer);
+  }], "Delegate via QIE Explorer");
 }
 
-/**
- * Undelegate QIE tokens from a validator
- * Requires: QIE Wallet (Cosmos mode) or Keplr connected
- */
 export async function undelegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
-  const { signer, address } = await getSignerAndAddress();
-  const msg = {
-    type: "cosmos-sdk/MsgUndelegate",
+  return signAndBroadcast([{
+    typeUrl: "/cosmos.staking.v1beta1.MsgUndelegate",
     value: {
-      delegator_address: address,
-      validator_address: validator,
+      delegatorAddress: "",
+      validatorAddress: validator,
       amount: coin(toMicro(qieAmount)),
     },
-  };
-  return signAndBroadcast(address, [msg], "Undelegate via QIE Explorer", signer);
+  }], "Undelegate via QIE Explorer");
 }
 
-/**
- * Redelegate QIE tokens from one validator to another
- * Requires: QIE Wallet (Cosmos mode) or Keplr connected
- */
 export async function redelegate(srcValidator: string, dstValidator: string, qieAmount: string): Promise<DeliverTxResponse> {
-  const { signer, address } = await getSignerAndAddress();
-  const msg = {
-    type: "cosmos-sdk/MsgBeginRedelegate",
+  return signAndBroadcast([{
+    typeUrl: "/cosmos.staking.v1beta1.MsgBeginRedelegate",
     value: {
-      delegator_address: address,
-      validator_src_address: srcValidator,
-      validator_dst_address: dstValidator,
+      delegatorAddress: "",
+      validatorSrcAddress: srcValidator,
+      validatorDstAddress: dstValidator,
       amount: coin(toMicro(qieAmount)),
     },
-  };
-  return signAndBroadcast(address, [msg], "Redelegate via QIE Explorer", signer);
+  }], "Redelegate via QIE Explorer");
 }
 
-/**
- * Withdraw all staking rewards from given validators
- * Requires: QIE Wallet (Cosmos mode) or Keplr connected
- */
 export async function withdrawAllRewards(validators: string[]): Promise<DeliverTxResponse> {
-  if (!validators.length) throw new Error("No validators with rewards");
-  const { signer, address } = await getSignerAndAddress();
-  const msgs = validators.map((v) => ({
-    type: "cosmos-sdk/MsgWithdrawDelegationReward",
-    value: {
-      delegator_address: address,
-      validator_address: v,
-    },
+  const msgs = validators.map(v => ({
+    typeUrl: "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+    value: { delegatorAddress: "", validatorAddress: v },
   }));
-  return signAndBroadcast(address, msgs, "Claim rewards via QIE Explorer", signer);
+  return signAndBroadcast(msgs, "Claim rewards via QIE Explorer");
 }
 
-/**
- * Vote on a governance proposal
- * Requires: QIE Wallet (Cosmos mode) or Keplr connected
- * @param option 1=YES, 2=ABSTAIN, 3=NO, 4=NO_WITH_VETO
- */
 export async function voteProposal(proposalId: string | number, option: 1 | 2 | 3 | 4): Promise<DeliverTxResponse> {
-  const { signer, address } = await getSignerAndAddress();
-  const msg = {
-    type: "cosmos-sdk/MsgVote",
-    value: {
-      proposal_id: String(proposalId),
-      voter: address,
-      option: option,
-    },
-  };
-  return signAndBroadcast(address, [msg], "Vote via QIE Explorer", signer);
+  return signAndBroadcast([{
+    typeUrl: "/cosmos.gov.v1beta1.MsgVote",
+    value: { proposalId: BigInt(proposalId), voter: "", option },
+  }], "Vote via QIE Explorer");
 }
