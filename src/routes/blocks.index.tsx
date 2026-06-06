@@ -6,20 +6,21 @@ import { Boxes, Clock, BarChart3, Activity, Zap, TrendingUp } from "lucide-react
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import dayjs from "dayjs";
 import { useMemo } from "react";
-import { motion } from "framer-motion";
 
 export const Route = createFileRoute("/blocks/")({
   head: () => ({ meta: [{ title: "Blocks — QIE Explorer" }] }),
   component: BlocksListPage,
 });
 
-// Warna solid terang untuk dark mode
+// Warna solid kontras untuk dark & light mode
 const BAR_COLORS = {
   high: "#D946EF",    // pink terang
   medium: "#8B5CF6",  // ungu terang
   low: "#06B6D4",     // cyan terang
-  empty: "#FB923C",   // abu-abu gelap
+  empty: "#6B7280",   // abu-abu medium
 };
+
+const CHART_TEXT_COLOR = "#9CA3AF"; // abu-abu terang, terbaca di dark mode
 
 function getBarColor(txs: number): string {
   if (txs >= 5) return BAR_COLORS.high;
@@ -103,11 +104,11 @@ function BlocksListPage() {
         </div>
       </div>
 
-      {/* BAR CHART - dengan warna solid kontras + animasi */}
+      {/* BAR CHART */}
       <Card>
         <SectionTitle title="Block Activity" sub="Transactions per block · Live updating" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
         
-        {/* Legend */}
+        {/* Legend dengan warna solid kontras */}
         <div className="flex items-center gap-4 mb-3 px-2 flex-wrap">
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="w-3 h-3 rounded-sm" style={{ background: BAR_COLORS.high }} /> 5+ TXs
@@ -130,10 +131,10 @@ function BlocksListPage() {
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.4} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} opacity={0.6} />
                 <XAxis 
                   dataKey="name" 
-                  stroke="hsl(var(--muted-foreground))" 
+                  stroke={CHART_TEXT_COLOR}
                   fontSize={9} 
                   tickLine={false} 
                   axisLine={false}
@@ -141,26 +142,30 @@ function BlocksListPage() {
                   textAnchor="end"
                   height={50}
                   interval={3}
+                  tick={{ fill: CHART_TEXT_COLOR }}
                 />
                 <YAxis 
-                  stroke="hsl(var(--muted-foreground))" 
+                  stroke={CHART_TEXT_COLOR}
                   fontSize={10} 
                   tickLine={false} 
                   axisLine={false}
                   allowDecimals={false}
                   domain={[0, 'auto']}
+                  tick={{ fill: CHART_TEXT_COLOR }}
                 />
                 <Tooltip
                   contentStyle={{ 
-                    background: "hsl(var(--card))", 
-                    border: "2px solid hsl(var(--border))", 
+                    background: "#1F2937",
+                    border: "2px solid #374151", 
                     borderRadius: 12, 
                     fontSize: 12,
-                    boxShadow: "0 8px 20px rgba(0,0,0,0.3)",
+                    color: "#F9FAFB",
+                    boxShadow: "0 8px 20px rgba(0,0,0,0.5)",
                   }}
                   formatter={(value: any) => [`${value} TXs`, "Transactions"]}
                   labelFormatter={(label: string) => `Block ${label}`}
-                  cursor={{ fill: 'hsl(var(--muted) / 0.1)' }}
+                  cursor={{ fill: 'rgba(139, 92, 246, 0.1)' }}
+                  labelStyle={{ color: "#F9FAFB" }}
                 />
                 <Bar 
                   dataKey="txs" 
