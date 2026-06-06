@@ -6,10 +6,11 @@ import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/p
 import { useState, useMemo } from "react";
 import { useWallet } from "@/lib/wallet";
 import { toast } from "sonner";
+import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Wallet, Coins, ArrowDownLeft, ArrowUpRight, Layers,
-  Copy, Check, TrendingUp, Clock, Gift, FileText,
-  ExternalLink
+  Copy, Check, TrendingUp, Clock, Gift, FileText, Loader2
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -26,10 +27,17 @@ export const Route = createFileRoute("/address/$address")({
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444"];
 
+type Action = "Delegate" | "Redelegate" | "Undelegate";
+
 function AddressDetail() {
   const { address } = Route.useParams();
   const { cosmos: cw, evm: ew } = useWallet() as any;
   const [copied, setCopied] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [modal, setModal] = useState<{ type: Action; val: any } | null>(null);
+  const [amount, setAmount] = useState("");
+  const [dstVal, setDstVal] = useState("");
+  const [busy, setBusy] = useState(false);
   const isOwn = cw?.address === address || ew?.address === address;
   const isEvmAddr = address.startsWith("0x");
   const isValidator = address.startsWith("qievaloper");
@@ -158,6 +166,45 @@ function AddressDetail() {
 
   const delChart = enrichedDels.slice().sort((a, b) => b.amount - a.amount).slice(0, 10).map(d => ({ name: d.moniker || shorten(d.valoper, 6, 4), amount: d.amount / 1e18 }));
 
+  const validatorsWithRewards = (rewards?.rewards ?? []).filter((r: any) => Number(r.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? 0) > 0).map((r: any) => r.validator_address);
+
+  function openModal(type: Action, val: any) {
+    if (!cw.address) return toast.error("Connect Keplr wallet first");
+    setModal({ type, val });
+    setAmount("");
+    setDstVal("");
+  }
+
+  async function submit() {
+    if (!modal) return;
+    const { type, val } = modal;
+    if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount");
+    if (type === "Redelegate" && !dstVal) return toast.error("Pick destination validator");
+    setBusy(true);
+    try {
+      let res;
+      if (type === "Delegate") res = await delegate(val.valoper, amount);
+      else if (type === "Undelegate") res = await undelegate(val.valoper, amount);
+      else res = await redelegate(val.valoper, dstVal, amount);
+      toast.success(`${type} success`, { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
+      setModal(null);
+    } catch (e: any) {
+      toast.error(`${type} failed`, { description: e?.message ?? String(e) });
+    } finally { setBusy(false); }
+  }
+
+  async function claimAll() {
+    if (!cw.address) return toast.error("Connect Keplr wallet first");
+    if (!validatorsWithRewards.length) return toast.error("No rewards to claim");
+    setClaiming(true);
+    try {
+      const res = await withdrawAllRewards(validatorsWithRewards);
+      toast.success("Rewards claimed", { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
+    } catch (e: any) {
+      toast.error("Claim failed", { description: e?.message ?? String(e) });
+    } finally { setClaiming(false); }
+  }
+
   function copy(val: string) { navigator.clipboard.writeText(val); setCopied(val); setTimeout(() => setCopied(null), 1500); }
 
   const isLoading = !balance && !dels && !evmData;
@@ -179,17 +226,13 @@ function AddressDetail() {
             </div>
             {isValidator && <Link to="/staking/$validator" params={{ validator: address }} className="text-xs text-primary hover:underline mt-2 inline-block">View validator profile →</Link>}
           </div>
-          {/* Keplr CTA */}
+          {/* Claim button */}
           {isOwn && cw.address && (
-            <a
-              href="https://wallet.keplr.app/chains/qie"
-              target="_blank"
-              rel="noreferrer"
-              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 hover:shadow-lg hover:shadow-violet-500/25 transition-all"
-            >
-              <Gift className="w-4 h-4" />
-              Claim in Keplr
-            </a>
+            <button onClick={claimAll} disabled={claiming || !validatorsWithRewards.length}
+              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 disabled:opacity-50 hover:shadow-lg hover:shadow-violet-500/25 transition-all">
+              {claiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
+              Claim All Rewards
+            </button>
           )}
         </div>
       </Card>
@@ -243,7 +286,7 @@ function AddressDetail() {
         </Card>
       </div>
 
-      {/* Delegations */}
+      {/* Delegations with Actions */}
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Layers className="h-4 w-4 text-violet-400" /> Delegations</h2><span className="text-xs text-muted-foreground">{enrichedDels.length}</span></div>
         <div className="divide-y divide-border">
@@ -257,14 +300,11 @@ function AddressDetail() {
               <div className="flex items-center gap-2">
                 <div className="text-right"><div className="font-mono text-xs font-medium">{formatQIE(d.amount, 2)}</div><div className="text-[10px] text-muted-foreground">{delegated > 0 ? ((d.amount / delegated) * 100).toFixed(2) : 0}%</div></div>
                 {isOwn && cw.address && (
-                  <a
-                    href="https://wallet.keplr.app/chains/qie"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg px-2 py-1 transition-colors flex items-center gap-1"
-                  >
-                    Stake <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
+                  <div className="flex gap-1">
+                    <button onClick={() => openModal("Delegate", d)} className="text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg px-2 py-1 transition-colors">Del</button>
+                    <button onClick={() => openModal("Redelegate", d)} className="text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg px-2 py-1 transition-colors">Re-Del</button>
+                    <button onClick={() => openModal("Undelegate", d)} className="text-[10px] bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg px-2 py-1 transition-colors">Un-Del</button>
+                  </div>
                 )}
               </div>
             </div>
@@ -343,6 +383,38 @@ function AddressDetail() {
           </div>
         </Card>
       )}
+
+      {/* Dialog */}
+      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
+        <DialogContent className="border-border max-w-md">
+          <DialogHeader><DialogTitle>{modal?.type} — {modal?.val?.moniker || shorten(modal?.val?.valoper, 10, 6)}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="text-xs text-muted-foreground">Validator: <span className="font-mono">{shorten(modal?.val?.valoper ?? "", 14, 10)}</span></div>
+            {modal?.type === "Redelegate" && (
+              <div>
+                <label className="text-xs text-muted-foreground">Destination Validator</label>
+                <select value={dstVal} onChange={(e) => setDstVal(e.target.value)} className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1">
+                  <option value="">Select validator…</option>
+                  {enrichedDels.filter((x: any) => x.valoper !== modal.val.valoper).map((x: any) => (<option key={x.valoper} value={x.valoper}>{x.moniker || shorten(x.valoper, 10, 6)}</option>))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="text-xs text-muted-foreground flex justify-between">
+                <span>Amount ({NETWORK.symbol})</span>
+                {modal?.type === "Delegate" ? <span>Available: {formatQIE(available, 4)}</span> : <span>Staked: {formatQIE(modal?.val?.amount ?? 0, 4)}</span>}
+              </label>
+              <input type="number" step="0.0001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30">Cancel</button>
+            <button onClick={submit} disabled={busy} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Confirm {modal?.type}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
