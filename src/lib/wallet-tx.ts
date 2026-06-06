@@ -1,10 +1,21 @@
 /**
  * Cosmos transaction helpers for QIE (Ethermint-based: coinType 60, eth_secp256k1).
  *
- * Uses Keplr's signDirect + REST API broadcast via proxy.
- * No WebSocket needed, no CORS issues.
+ * Uses Keplr's signDirect + RPC broadcast_tx_sync via proxy.
+ * Proto encoding for proper TxRaw format.
  */
 import { NETWORK } from "@/data/network";
+import { TxRaw } from "cosmjs-types/cosmos/tx/v1beta1/tx";
+import { TxBody } from "cosmjs-types/cosmos/tx/v1beta1/tx";
+import { AuthInfo } from "cosmjs-types/cosmos/tx/v1beta1/tx";
+import { SignMode } from "cosmjs-types/cosmos/tx/signing/v1beta1/signing";
+import { PubKey } from "cosmjs-types/cosmos/crypto/secp256k1/keys";
+import { Any } from "cosmjs-types/google/protobuf/any";
+import { MsgDelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
+import { MsgUndelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
+import { MsgBeginRedelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
+import { MsgWithdrawDelegatorReward } from "cosmjs-types/cosmos/distribution/v1beta1/tx";
+import { MsgVote } from "cosmjs-types/cosmos/gov/v1beta1/tx";
 
 type DeliverTxResponse = {
   code: number;
@@ -25,6 +36,16 @@ export function toMicro(qie: string | number): string {
   return (BigInt(Math.floor(n * 1e6)) * BigInt(1e12)).toString();
 }
 
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach(b => binary += String.fromCharCode(b));
+  return btoa(binary);
+}
+
+function fromBase64(b64: string): Uint8Array {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
 async function getKeplr() {
   const w = window as any;
   const keplr = w.keplr;
@@ -33,35 +54,34 @@ async function getKeplr() {
   return keplr;
 }
 
-// Build Amino message JSON (Ethermint requires Amino format)
-function buildAminoMsg(type: string, value: any) {
-  return { type, value };
+function encodeMsg(typeUrl: string, msg: any): Any {
+  let encoded: Uint8Array;
+  switch (typeUrl) {
+    case "/cosmos.staking.v1beta1.MsgDelegate":
+      encoded = MsgDelegate.encode(MsgDelegate.fromPartial(msg)).finish();
+      break;
+    case "/cosmos.staking.v1beta1.MsgUndelegate":
+      encoded = MsgUndelegate.encode(MsgUndelegate.fromPartial(msg)).finish();
+      break;
+    case "/cosmos.staking.v1beta1.MsgBeginRedelegate":
+      encoded = MsgBeginRedelegate.encode(MsgBeginRedelegate.fromPartial(msg)).finish();
+      break;
+    case "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward":
+      encoded = MsgWithdrawDelegatorReward.encode(MsgWithdrawDelegatorReward.fromPartial(msg)).finish();
+      break;
+    case "/cosmos.gov.v1beta1.MsgVote":
+      encoded = MsgVote.encode(MsgVote.fromPartial(msg)).finish();
+      break;
+    default:
+      throw new Error("Unknown message type: " + typeUrl);
+  }
+  return Any.fromPartial({
+    typeUrl: typeUrl,
+    value: encoded,
+  });
 }
 
-// Build SignDoc for signDirect
-function buildSignDoc(address: string, accountNumber: string, sequence: string, msgs: any[], fee: any, memo: string) {
-  const bodyBytes = encodeBodyBytes(msgs, memo);
-  const authInfoBytes = encodeAuthInfoBytes(fee);
-  
-  return {
-    chainId: NETWORK.cosmosChainId,
-    accountNumber: accountNumber,
-    authInfoBytes: authInfoBytes,
-    bodyBytes: bodyBytes,
-  };
-}
-
-// Simple body encoding (Amino JSON)
-function encodeBodyBytes(msgs: any[], memo: string): Uint8Array {
-  const bodyJson = JSON.stringify({ messages: msgs, memo });
-  return new TextEncoder().encode(bodyJson);
-}
-
-function encodeAuthInfoBytes(fee: any): Uint8Array {
-  return new Uint8Array(0); // Will be filled by Keplr
-}
-
-async function signAndBroadcast(msgs: any[], memo: string): Promise<DeliverTxResponse> {
+async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: string): Promise<DeliverTxResponse> {
   const keplr = await getKeplr();
   const key = await keplr.getKey(NETWORK.cosmosChainId);
   const address = key.bech32Address;
@@ -69,71 +89,84 @@ async function signAndBroadcast(msgs: any[], memo: string): Promise<DeliverTxRes
   // Fetch account info
   const accRes = await fetch(`/api/rest/cosmos/auth/v1beta1/accounts/${address}`).then(r => r.json());
   const baseAccount = accRes?.account?.base_account || accRes?.account;
-  const accountNumber = String(baseAccount?.account_number || 0);
-  const sequence = String(baseAccount?.sequence || 0);
+  const accountNumber = Number(baseAccount?.account_number || 0);
+  const sequence = Number(baseAccount?.sequence || 0);
 
-  // Build amino messages
-  const aminoMsgs = msgs.map(m => {
-    if (m.typeUrl) {
-      const type = m.typeUrl.replace("/cosmos.staking.v1beta1.", "cosmos-sdk/").replace("/cosmos.distribution.v1beta1.", "cosmos-sdk/").replace("/cosmos.gov.v1beta1.", "cosmos-sdk/");
-      return buildAminoMsg(type, {
-        delegator_address: m.value.delegatorAddress || m.value.delegator_address,
-        validator_address: m.value.validatorAddress || m.value.validator_address,
-        validator_src_address: m.value.validatorSrcAddress || m.value.validator_src_address,
-        validator_dst_address: m.value.validatorDstAddress || m.value.validator_dst_address,
-        amount: m.value.amount,
-        proposal_id: m.value.proposalId?.toString(),
-        voter: m.value.voter,
-        option: m.value.option,
-      });
-    }
-    return m;
+  // Encode messages to Any[]
+  const anyMsgs = msgs.map(m => encodeMsg(m.typeUrl, m.value));
+
+  // Build TxBody
+  const txBody = TxBody.fromPartial({
+    messages: anyMsgs,
+    memo: memo,
   });
+  const bodyBytes = TxBody.encode(txBody).finish();
 
-  const fee = { amount: [{ denom: NETWORK.denom, amount: "6250000000000000" }], gas: "250000" };
+  // Build AuthInfo
+  const pubKeyValue = key.pubkey || new Uint8Array();
+  const authInfo = AuthInfo.fromPartial({
+    signerInfos: [{
+      publicKey: Any.fromPartial({
+        typeUrl: "/ethermint.crypto.v1.ethsecp256k1.PubKey",
+        value: PubKey.encode(PubKey.fromPartial({ key: pubKeyValue })).finish(),
+      }),
+      modeInfo: {
+        single: { mode: SignMode.SIGN_MODE_DIRECT },
+      },
+      sequence: BigInt(sequence),
+    }],
+    fee: {
+      amount: [{ denom: NETWORK.denom, amount: "6250000000000000" }],
+      gasLimit: BigInt(250000),
+    },
+  });
+  const authInfoBytes = AuthInfo.encode(authInfo).finish();
 
-  // Sign with signDirect
+  // SignDoc
   const signDoc = {
     chainId: NETWORK.cosmosChainId,
-    accountNumber: accountNumber,
-    authInfoBytes: new Uint8Array([18, 11, 10, 9, 10, 4, 97, 113, 105, 101, 18, 1, 48]), // basic auth info
-    bodyBytes: encodeBodyBytes(aminoMsgs, memo),
+    accountNumber: String(accountNumber),
+    authInfoBytes: authInfoBytes,
+    bodyBytes: bodyBytes,
   };
 
+  // Sign with Keplr
   const signResult = await keplr.signDirect(NETWORK.cosmosChainId, address, signDoc);
 
-  // Build signed tx for broadcast
-  const signedTx = {
-    body_bytes: Buffer.from(signResult.signed.bodyBytes).toString("base64"),
-    auth_info_bytes: Buffer.from(signResult.signed.authInfoBytes).toString("base64"),
-    signatures: [Buffer.from(signResult.signature.signature, "base64").toString("base64")],
-  };
-
-  const txBytes = Buffer.from(JSON.stringify({
-    body: { messages: aminoMsgs, memo },
-    auth_info: { signer_infos: [], fee },
-    signatures: [signResult.signature.signature],
-  })).toString("base64");
-
-  // Broadcast via REST
-  const broadcastRes = await fetch(`/api/rest/cosmos/tx/v1beta1/txs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tx_bytes: txBytes, mode: "BROADCAST_MODE_SYNC" }),
+  // Build TxRaw
+  const txRaw = TxRaw.fromPartial({
+    bodyBytes: signResult.signed.bodyBytes,
+    authInfoBytes: signResult.signed.authInfoBytes,
+    signatures: [fromBase64(signResult.signature.signature)],
   });
 
-  const data = await broadcastRes.json();
-  if (data?.tx_response?.code !== undefined && data.tx_response.code !== 0) {
-    throw new Error(data.tx_response.raw_log || "Tx failed");
+  const txBytes = TxRaw.encode(txRaw).finish();
+  const txBase64 = toBase64(txBytes);
+
+  // Broadcast via RPC
+  const res = await fetch(`/api/rpc/broadcast_tx_sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "broadcast_tx_sync",
+      params: { tx: txBase64 },
+    }),
+  });
+  const data = await res.json();
+
+  if (data?.result?.code !== 0) {
+    throw new Error(data?.result?.log || "Transaction failed");
   }
 
   return {
     code: 0,
-    transactionHash: data?.tx_response?.txhash || "",
-    gasUsed: Number(data?.tx_response?.gas_used || 0),
-    gasWanted: Number(data?.tx_response?.gas_wanted || 0),
-    height: Number(data?.tx_response?.height || 0),
-    rawLog: "",
+    transactionHash: data?.result?.hash || "",
+    gasUsed: Number(data?.result?.gas_used || 0),
+    gasWanted: Number(data?.result?.gas_wanted || 0),
+    height: Number(data?.result?.height || 0),
+    rawLog: data?.result?.log || "",
   };
 }
 
