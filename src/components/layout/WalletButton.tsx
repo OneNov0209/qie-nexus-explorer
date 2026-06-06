@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Wallet, LogOut, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useWallet, connectMetaMask, connectKeplr } from "@/lib/wallet";
+import { useWallet, connectMetaMask, connectKeplr, connectQieWallet } from "@/lib/wallet";
 import { NETWORK, WALLET_LOGOS } from "@/data/network";
 import { shorten } from "@/lib/api";
 import { toast } from "sonner";
@@ -12,11 +12,12 @@ export function WalletButton() {
   const { evm, cosmos, disconnectEvm, disconnectCosmos } = useWallet();
   const connected = evm.address || cosmos.address;
 
-  async function tryConnect(kind: "metamask" | "keplr") {
+  async function tryConnect(kind: "metamask" | "keplr" | "qie") {
     try {
-      if (kind === "metamask") await connectMetaMask();
+      if (kind === "metamask" || kind === "qie") await connectMetaMask();
       else await connectKeplr("keplr");
-      toast.success(`Connected to ${kind === "metamask" ? "MetaMask" : "Keplr"}`);
+      const name = kind === "qie" ? "QIE Wallet" : kind === "metamask" ? "MetaMask" : "Keplr";
+      toast.success(`Connected to ${name}`);
       setOpen(false);
     } catch (e: any) {
       toast.error(e?.message ?? "Connection failed");
@@ -39,7 +40,7 @@ export function WalletButton() {
         <div className="flex items-center gap-2">
           {evm.address && (
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 text-sm">
-              <img src={WALLET_LOGOS.metamask} alt="MetaMask" className="w-4 h-4" />
+              <img src={WALLET_LOGOS.metamask} alt="EVM" className="w-4 h-4" />
               <span className="font-mono">{shorten(evm.address)}</span>
               {evm.balance && (
                 <span className="text-muted-foreground">{Number(evm.balance).toFixed(4)} {NETWORK.symbol}</span>
@@ -54,7 +55,7 @@ export function WalletButton() {
           )}
           {cosmos.address && (
             <div className="glass rounded-xl px-3 py-2 flex items-center gap-2 text-sm">
-              <img src={WALLET_LOGOS.keplr} alt="Keplr" className="w-4 h-4" />
+              <img src={WALLET_LOGOS.keplr} alt="Cosmos" className="w-4 h-4" />
               <span className="font-mono">{shorten(cosmos.address)}</span>
               {cosmos.balance && (
                 <span className="text-muted-foreground">{cosmos.balance} {NETWORK.symbol}</span>
@@ -93,22 +94,38 @@ export function WalletButton() {
           </DialogHeader>
 
           <div className="space-y-2 pt-2">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1">EVM</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1">EVM Wallets</div>
+            
+            {/* QIE Wallet - Official */}
+            <WalletRow
+              logo={NETWORK.logo}
+              name="QIE Wallet"
+              sub="Official QIE wallet · EVM"
+              onClick={() => tryConnect("qie")}
+            />
+            
+            {/* MetaMask */}
             <WalletRow
               logo={WALLET_LOGOS.metamask}
               name="MetaMask"
-              sub="Connect your MetaMask wallet"
+              sub="EVM wallet"
               onClick={() => tryConnect("metamask")}
             />
 
-            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1 pt-3">Cosmos</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground px-1 pt-3">Cosmos Wallets</div>
+            
+            {/* Keplr - For staking */}
             <WalletRow
               logo={WALLET_LOGOS.keplr}
               name="Keplr"
-              sub="Connect your Keplr wallet"
+              sub="For staking, voting & rewards"
               onClick={() => tryConnect("keplr")}
             />
           </div>
+
+          <p className="text-[10px] text-muted-foreground text-center pt-2">
+            EVM wallets for balance & transfers · Keplr for staking & governance
+          </p>
         </DialogContent>
       </Dialog>
     </>
@@ -121,7 +138,7 @@ function WalletRow({ logo, name, sub, onClick }: { logo: string; name: string; s
       onClick={onClick}
       className="w-full flex items-center gap-3 p-3 rounded-xl glass hover:bg-white/10 transition group"
     >
-      <img src={logo} alt={name} className="w-8 h-8" />
+      <img src={logo} alt={name} className="w-8 h-8 rounded-full" />
       <div className="text-left flex-1">
         <div className="font-medium text-sm">{name}</div>
         <div className="text-xs text-muted-foreground">{sub}</div>
