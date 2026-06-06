@@ -1,17 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueries } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten, evmRpc } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
 import { useState, useMemo } from "react";
-import { useWallet } from "@/lib/wallet";
+import { useWallet, connectMetaMask, connectKeplr } from "@/lib/wallet";
 import { toast } from "sonner";
 import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Wallet, Send, Coins, ArrowDownLeft, ArrowUpRight, Layers,
   Copy, Check, TrendingUp, Clock, Gift, FileText,
-  BarChart3, LogOut, Loader2
+  BarChart3, LogOut, Loader2, Plus, ExternalLink
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -27,51 +27,63 @@ export const Route = createFileRoute("/address/$address")({
 });
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444"];
-
 type Action = "Delegate" | "Redelegate" | "Undelegate";
 
 function AddressDetail() {
   const { address } = Route.useParams();
-  const { cosmos: cw, evm: ew } = useWallet() as any;
+  const { cosmos: cw, evm: ew, disconnectEvm, disconnectCosmos } = useWallet() as any;
+  const qc = useQueryClient();
   const [copied, setCopied] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [modal, setModal] = useState<{ type: Action; val: any } | null>(null);
   const [amount, setAmount] = useState("");
   const [dstVal, setDstVal] = useState("");
   const [busy, setBusy] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const isOwn = cw?.address === address || ew?.address === address;
   const isEvmAddr = address.startsWith("0x");
   const isValidator = address.startsWith("qievaloper");
 
-  // Balance
+  // ========== WALLET CONNECTION ==========
+  async function handleConnect(kind: "metamask" | "keplr") {
+    setConnecting(kind);
+    try {
+      if (kind === "metamask") await connectMetaMask();
+      else await connectKeplr("keplr");
+      toast.success(`Connected to ${kind === "metamask" ? "MetaMask" : "Keplr"}`);
+      qc.invalidateQueries({ queryKey: ["bal", address] });
+      qc.invalidateQueries({ queryKey: ["dels", address] });
+      qc.invalidateQueries({ queryKey: ["rewards", address] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Connection failed");
+    } finally {
+      setConnecting(null);
+    }
+  }
+
+  // ========== COSMOS DATA ==========
   const { data: balance } = useQuery({
     queryKey: ["bal", address],
     queryFn: () => cosmos.balance(address).catch(() => ({ balances: [] })),
     refetchInterval: 30_000,
   });
-
-  // Delegations
   const { data: dels } = useQuery({
     queryKey: ["dels", address],
     queryFn: () => cosmos.delegations(address).catch(() => ({ delegation_responses: [] })),
     refetchInterval: 30_000,
   });
-
-  // Rewards
   const { data: rewards } = useQuery({
     queryKey: ["rewards", address],
     queryFn: () => cosmos.rewards(address).catch(() => ({ rewards: [], total: [] })),
     refetchInterval: 30_000,
   });
-
-  // Unbonding
   const { data: unb } = useQuery({
     queryKey: ["unb", address],
     queryFn: () => cosmos.unbonding(address).catch(() => ({ unbonding_responses: [] })),
     refetchInterval: 30_000,
   });
 
-  // EVM data
+  // ========== EVM DATA ==========
   const { data: evmData } = useQuery({
     queryKey: ["evm-addr", address],
     enabled: isEvmAddr,
@@ -89,7 +101,7 @@ function AddressDetail() {
     },
   });
 
-  // Recent transactions via Tendermint tx_search
+  // Recent TXs
   const { data: txData } = useQuery({
     queryKey: ["tx-search", address],
     queryFn: async () => {
@@ -113,36 +125,30 @@ function AddressDetail() {
     enabled: !isEvmAddr,
   });
 
-  // EVM recent transactions
   const { data: evmTxs } = useQuery({
     queryKey: ["evm-txs", address],
     queryFn: async () => {
       try {
         const latestBlock = await evmRpc<string>("eth_blockNumber", []);
         const latest = parseInt(latestBlock, 16);
-        const txPromises = [];
-        for (let i = 0; i < Math.min(20, latest); i++) {
-          txPromises.push(evmRpc<any>("eth_getBlockByNumber", ["0x" + (latest - i).toString(16), true]).catch(() => null));
-        }
-        const blocks = await Promise.all(txPromises);
         const txs: any[] = [];
-        for (const block of blocks) {
+        for (let i = 0; i < Math.min(20, latest) && txs.length < 30; i++) {
+          const block = await evmRpc<any>("eth_getBlockByNumber", ["0x" + (latest - i).toString(16), true]).catch(() => null);
           if (!block?.transactions) continue;
           for (const tx of block.transactions) {
             if (tx.from?.toLowerCase() === address.toLowerCase() || tx.to?.toLowerCase() === address.toLowerCase()) {
               txs.push({ hash: tx.hash, blockNumber: parseInt(block.number, 16), time: parseInt(block.timestamp, 16) * 1000, from: tx.from, to: tx.to, value: Number(BigInt(tx.value)) / 1e18, type: tx.from?.toLowerCase() === address.toLowerCase() ? "out" : "in" });
             }
-            if (txs.length >= 30) break;
           }
-          if (txs.length >= 30) break;
         }
-        return txs;
+        return txs.slice(0, 30);
       } catch { return []; }
     },
     refetchInterval: 30_000,
     enabled: isEvmAddr,
   });
 
+  // ========== COMPUTED ==========
   const available = Number(balance?.balances?.find((b: any) => b.denom === NETWORK.denom)?.amount ?? 0);
   const delegations = dels?.delegation_responses ?? [];
   const delegated = delegations.reduce((s: number, d: any) => s + Number(d.balance?.amount ?? 0), 0);
@@ -159,7 +165,7 @@ function AddressDetail() {
 
   const enrichedDels = useMemo(() =>
     delegations.map((d: any, i: number) => {
-      const v = (valQueries[i]?.data as any);
+      const v = valQueries[i]?.data as any;
       return { valoper: d.delegation.validator_address, amount: Number(d.balance?.amount ?? 0), moniker: v?.description?.moniker, identity: v?.description?.identity, jailed: v?.jailed, status: v?.status };
     }), [delegations, valQueries]);
 
@@ -172,9 +178,9 @@ function AddressDetail() {
   ].filter(d => d.value > 0);
 
   const delChart = enrichedDels.slice().sort((a, b) => b.amount - a.amount).slice(0, 10).map(d => ({ name: d.moniker || shorten(d.valoper, 6, 4), amount: d.amount / 1e18 }));
-
   const validatorsWithRewards = (rewards?.rewards ?? []).filter((r: any) => Number(r.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? 0) > 0).map((r: any) => r.validator_address);
 
+  // ========== ACTIONS ==========
   function openModal(type: Action, val: any) {
     if (!cw.address) return toast.error("Connect Keplr wallet first");
     setModal({ type, val });
@@ -195,6 +201,9 @@ function AddressDetail() {
       else res = await redelegate(val.valoper, dstVal, amount);
       toast.success(`${type} success`, { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
       setModal(null);
+      qc.invalidateQueries({ queryKey: ["bal", address] });
+      qc.invalidateQueries({ queryKey: ["dels", address] });
+      qc.invalidateQueries({ queryKey: ["rewards", address] });
     } catch (e: any) {
       toast.error(`${type} failed`, { description: e?.message ?? String(e) });
     } finally { setBusy(false); }
@@ -207,6 +216,8 @@ function AddressDetail() {
     try {
       const res = await withdrawAllRewards(validatorsWithRewards);
       toast.success("Rewards claimed", { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
+      qc.invalidateQueries({ queryKey: ["rewards", address] });
+      qc.invalidateQueries({ queryKey: ["bal", address] });
     } catch (e: any) {
       toast.error("Claim failed", { description: e?.message ?? String(e) });
     } finally { setClaiming(false); }
@@ -214,12 +225,53 @@ function AddressDetail() {
 
   function copy(val: string) { navigator.clipboard.writeText(val); setCopied(val); setTimeout(() => setCopied(null), 1500); }
 
-  const isLoading = !balance && !dels;
+  const isLoading = !balance && !dels && !evmData;
   if (isLoading) return <Loading />;
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header Card */}
+      {/* ===== MULTI-WALLET STATUS BAR ===== */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">Connected Wallets:</span>
+
+          {/* MetaMask Status */}
+          {ew.address ? (
+            <div className="flex items-center gap-2 glass rounded-xl px-3 py-1.5 text-sm">
+              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/metamask.png" alt="MetaMask" className="w-5 h-5" />
+              <span className="font-mono text-xs">{shorten(ew.address)}</span>
+              <span className="text-emerald-400 text-xs">{Number(ew.balance || 0).toFixed(4)} {NETWORK.symbol}</span>
+              <button onClick={disconnectEvm} className="text-muted-foreground hover:text-red-400"><LogOut className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : (
+            <button onClick={() => handleConnect("metamask")} disabled={connecting === "metamask"}
+              className="flex items-center gap-1.5 glass rounded-xl px-3 py-1.5 text-sm hover:bg-white/10 transition text-muted-foreground">
+              {connecting === "metamask" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/metamask.png" alt="MetaMask" className="w-4 h-4 opacity-50" />
+              MetaMask
+            </button>
+          )}
+
+          {/* Keplr Status */}
+          {cw.address ? (
+            <div className="flex items-center gap-2 glass rounded-xl px-3 py-1.5 text-sm">
+              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/keplr.png" alt="Keplr" className="w-5 h-5" />
+              <span className="font-mono text-xs">{shorten(cw.address)}</span>
+              {cw.balance && <span className="text-emerald-400 text-xs">{cw.balance} {NETWORK.symbol}</span>}
+              <button onClick={disconnectCosmos} className="text-muted-foreground hover:text-red-400"><LogOut className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : (
+            <button onClick={() => handleConnect("keplr")} disabled={connecting === "keplr"}
+              className="flex items-center gap-1.5 glass rounded-xl px-3 py-1.5 text-sm hover:bg-white/10 transition text-muted-foreground">
+              {connecting === "keplr" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              <img src="https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/keplr.png" alt="Keplr" className="w-4 h-4 opacity-50" />
+              Keplr
+            </button>
+          )}
+        </div>
+      </Card>
+
+      {/* ===== HEADER CARD ===== */}
       <Card className="p-6">
         <div className="flex items-start gap-4 flex-wrap">
           <div className={`h-14 w-14 rounded-2xl grid place-items-center shrink-0 ring-2 ${evmData?.isContract ? "bg-cyan-500/10 ring-cyan-500/30 text-cyan-400" : isValidator ? "bg-violet-500/10 ring-violet-500/30 text-violet-400" : "bg-blue-500/10 ring-blue-500/30 text-blue-400"}`}>
@@ -233,7 +285,7 @@ function AddressDetail() {
             </div>
             {isValidator && <Link to="/staking/$validator" params={{ validator: address }} className="text-xs text-primary hover:underline mt-2 inline-block">View validator profile →</Link>}
           </div>
-          {/* Action buttons for own address */}
+          {/* Action buttons */}
           {isOwn && cw.address && (
             <div className="flex flex-wrap gap-2">
               <button onClick={claimAll} disabled={claiming || !validatorsWithRewards.length}
@@ -246,7 +298,8 @@ function AddressDetail() {
         </div>
       </Card>
 
-      {/* Stats */}
+      {/* ===== STATS ===== */}
+      {/* Cosmos Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Available" value={formatQIE(available, 2)} sub={NETWORK.symbol} />
         <Stat label="Delegated" value={formatQIE(delegated, 2)} sub={NETWORK.symbol} />
@@ -254,6 +307,7 @@ function AddressDetail() {
         <Stat label="Rewards" value={formatQIE(totalRewards, 4)} sub={NETWORK.symbol} />
       </div>
 
+      {/* EVM Stats */}
       {isEvmAddr && evmData && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Stat label="EVM Balance" value={`${evmData.balance} ${NETWORK.symbol}`} />
@@ -262,7 +316,7 @@ function AddressDetail() {
         </div>
       )}
 
-      {/* Charts */}
+      {/* ===== CHARTS ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3"><h2 className="font-semibold">Portfolio Breakdown</h2><span className="text-xs font-mono text-muted-foreground">{formatQIE(totalPortfolio, 2)} {NETWORK.symbol}</span></div>
@@ -295,64 +349,46 @@ function AddressDetail() {
         </Card>
       </div>
 
-      {/* Delegations List with Action Buttons */}
+      {/* ===== DELEGATIONS WITH ACTIONS ===== */}
       <Card className="overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold inline-flex items-center gap-2"><Layers className="h-4 w-4 text-violet-400" /> Delegations</h2>
-          <span className="text-xs text-muted-foreground">{enrichedDels.length}</span>
-        </div>
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Layers className="h-4 w-4 text-violet-400" /> Delegations</h2><span className="text-xs text-muted-foreground">{enrichedDels.length}</span></div>
         <div className="divide-y divide-border">
-          {enrichedDels.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-muted-foreground">No delegations</div>
-          ) : (
-            enrichedDels.map((d) => (
-              <div key={d.valoper} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition gap-3 flex-wrap">
-                <Link to="/staking/$validator" params={{ validator: d.valoper }} className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 text-xs font-bold">{d.moniker?.slice(0, 2).toUpperCase() || "??"}</div>
-                  <div className="min-w-0">
-                    <div className="font-medium truncate text-sm">{d.moniker || shorten(d.valoper, 10, 6)}</div>
-                    <div className="text-[11px] text-muted-foreground font-mono truncate">{shorten(d.valoper, 14, 8)}</div>
+          {enrichedDels.length === 0 ? <div className="px-5 py-10 text-center text-sm text-muted-foreground">No delegations</div> : enrichedDels.map((d) => (
+            <div key={d.valoper} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition gap-3 flex-wrap">
+              <Link to="/staking/$validator" params={{ validator: d.valoper }} className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 text-xs font-bold">{d.moniker?.slice(0, 2).toUpperCase() || "??"}</div>
+                <div className="min-w-0"><div className="font-medium truncate text-sm">{d.moniker || shorten(d.valoper, 10, 6)}</div><div className="text-[11px] text-muted-foreground font-mono truncate">{shorten(d.valoper, 14, 8)}</div></div>
+                {d.jailed && <Pill variant="danger">Jailed</Pill>}
+              </Link>
+              <div className="flex items-center gap-2">
+                <div className="text-right"><div className="font-mono text-xs font-medium">{formatQIE(d.amount, 2)}</div><div className="text-[10px] text-muted-foreground">{delegated > 0 ? ((d.amount / delegated) * 100).toFixed(2) : 0}%</div></div>
+                {isOwn && cw.address && (
+                  <div className="flex gap-1">
+                    <button onClick={() => openModal("Delegate", d)} className="text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg px-2 py-1 transition-colors">Del</button>
+                    <button onClick={() => openModal("Redelegate", d)} className="text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg px-2 py-1 transition-colors">Re-Del</button>
+                    <button onClick={() => openModal("Undelegate", d)} className="text-[10px] bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg px-2 py-1 transition-colors">Un-Del</button>
                   </div>
-                  {d.jailed && <Pill variant="danger">Jailed</Pill>}
-                </Link>
-                <div className="flex items-center gap-2">
-                  <div className="text-right">
-                    <div className="font-mono text-xs font-medium">{formatQIE(d.amount, 2)}</div>
-                    <div className="text-[10px] text-muted-foreground">{delegated > 0 ? ((d.amount / delegated) * 100).toFixed(2) : 0}%</div>
-                  </div>
-                  {isOwn && cw.address && (
-                    <div className="flex gap-1">
-                      <button onClick={() => openModal("Delegate", d)} className="text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg px-2 py-1 transition-colors">Del</button>
-                      <button onClick={() => openModal("Redelegate", d)} className="text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg px-2 py-1 transition-colors">Re-Del</button>
-                      <button onClick={() => openModal("Undelegate", d)} className="text-[10px] bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg px-2 py-1 transition-colors">Un-Del</button>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
       </Card>
 
-      {/* Rewards */}
+      {/* ===== REWARDS ===== */}
       {rewards?.rewards?.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Gift className="h-4 w-4 text-pink-400" /> Rewards</h2><span className="text-xs font-mono text-pink-400">{formatQIE(totalRewards, 6)} {NETWORK.symbol}</span></div>
           <div className="divide-y divide-border">
             {rewards.rewards.filter((r: any) => Number(r.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? 0) > 0).map((r: any, i: number) => {
               const qie = r.reward?.find((c: any) => c.denom === NETWORK.denom);
-              return (
-                <Link key={i} to="/staking/$validator" params={{ validator: r.validator_address }} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition">
-                  <span className="font-mono text-xs text-muted-foreground">{shorten(r.validator_address, 14, 10)}</span>
-                  <span className="text-sm font-medium text-pink-400">{formatQIE(qie?.amount ?? "0", 6)} {NETWORK.symbol}</span>
-                </Link>
-              );
+              return <Link key={i} to="/staking/$validator" params={{ validator: r.validator_address }} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition"><span className="font-mono text-xs text-muted-foreground">{shorten(r.validator_address, 14, 10)}</span><span className="text-sm font-medium text-pink-400">{formatQIE(qie?.amount ?? "0", 6)} {NETWORK.symbol}</span></Link>;
             })}
           </div>
         </Card>
       )}
 
-      {/* Unbonding */}
+      {/* ===== UNBONDING ===== */}
       {unb?.unbonding_responses?.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold inline-flex items-center gap-2"><Clock className="h-4 w-4 text-amber-400" /> Unbonding</h2></div>
@@ -366,7 +402,7 @@ function AddressDetail() {
         </Card>
       )}
 
-      {/* Recent Transactions - Cosmos */}
+      {/* ===== RECENT TRANSACTIONS (COSMOS) ===== */}
       {txData && txData.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold">Recent Transactions</h2><span className="text-xs text-muted-foreground">{txData.length}</span></div>
@@ -393,7 +429,7 @@ function AddressDetail() {
         </Card>
       )}
 
-      {/* Recent Transactions - EVM */}
+      {/* ===== RECENT EVM TRANSACTIONS ===== */}
       {evmTxs && evmTxs.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between"><h2 className="font-semibold">Recent EVM Transactions</h2><span className="text-xs text-muted-foreground">{evmTxs.length}</span></div>
@@ -411,7 +447,7 @@ function AddressDetail() {
         </Card>
       )}
 
-      {/* Action Dialog */}
+      {/* ===== ACTION DIALOG ===== */}
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
         <DialogContent className="border-border max-w-md">
           <DialogHeader><DialogTitle>{modal?.type} — {modal?.val?.moniker || shorten(modal?.val?.valoper, 10, 6)}</DialogTitle></DialogHeader>
@@ -435,7 +471,7 @@ function AddressDetail() {
             </div>
           </div>
           <DialogFooter>
-            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30 transition-colors">Cancel</button>
+            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30">Cancel</button>
             <button onClick={submit} disabled={busy} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
               {busy && <Loader2 className="w-4 h-4 animate-spin" />} Confirm {modal?.type}
             </button>
