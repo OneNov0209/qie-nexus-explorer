@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp, Eye, EyeOff, Shield
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ValidatorAvatar } from "@/components/shared/ValidatorAvatar";
 import dayjs from "dayjs";
 
 export const Route = createFileRoute("/uptime")({
@@ -26,7 +27,7 @@ function UptimePage() {
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["uptime"],
-    refetchInterval: 30_000,
+    refetchInterval: 6_000,
     queryFn: async () => {
       const [signing, params, vals, status] = await Promise.all([
         cosmos.signingInfos(),
@@ -40,19 +41,15 @@ function UptimePage() {
       const signingInfos = signing?.info ?? [];
       const latestHeight = Number(status?.sync_info?.latest_block_height ?? 0);
 
-      // Map signing info to validators
       const mapped = validators.map((v: any) => {
         const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
         const missed = Number(info?.missed_blocks_counter ?? 0);
         const signedCount = window - missed;
         const uptimePct = window > 0 ? (signedCount / window) * 100 : 100;
 
-        // Generate simulated block history based on uptime percentage
-        // Since we don't have per-block history from API, we simulate based on missed count
         const blockHistory: string[] = [];
         const missPositions = new Set<number>();
         
-        // Randomly distribute missed blocks across the window
         if (missed > 0) {
           const step = Math.floor(window / missed);
           for (let m = 0; m < missed; m++) {
@@ -85,7 +82,6 @@ function UptimePage() {
         };
       });
 
-      // Sort by voting power
       mapped.sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens));
 
       return {
@@ -199,7 +195,6 @@ function UptimePage() {
 
       {/* Chart + Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart */}
         <Card className="lg:col-span-2">
           <SectionTitle title="Top 20 Validator Uptime" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
           <div className="h-52 px-2 pb-2">
@@ -214,20 +209,13 @@ function UptimePage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                 <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} unit="%" domain={[80, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "12px",
-                  }}
-                />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px" }} />
                 <Area type="monotone" dataKey="uptime" stroke="#3b82f6" strokeWidth={2} fill="url(#uptimeGrad)" name="Uptime %" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        {/* Network Health */}
         <Card>
           <SectionTitle title="Network Health" icon={<Gauge className="w-5 h-5 text-emerald-400" />} />
           <div className="space-y-4 mt-2">
@@ -287,17 +275,14 @@ function UptimePage() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">No validators found.</td>
-                </tr>
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No validators found.</td></tr>
               ) : (
-                filtered.map((v: any, i: number) => {
+                filtered.map((v: any) => {
                   const isGood = v.uptimePct >= 95;
                   const isWarning = v.uptimePct >= 80 && v.uptimePct < 95;
                   const isBad = v.uptimePct < 80;
                   const isExpanded = expandedRows.has(v.operator_address);
                   const moniker = v.description?.moniker || "Unknown";
-                  const initials = moniker.slice(0, 2).toUpperCase();
 
                   return (
                     <>
@@ -310,9 +295,7 @@ function UptimePage() {
                         <td className="p-4 text-muted-foreground font-mono text-xs font-bold">#{v.rank}</td>
                         <td className="p-4">
                           <Link to="/staking/$validator" params={{ validator: v.operator_address }} className="flex items-center gap-3 hover:text-violet-400 transition-colors">
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 text-xs font-bold">
-                              {initials}
-                            </div>
+                            <ValidatorAvatar identity={v.identity} moniker={moniker} size="sm" />
                             <span className="font-medium">{moniker}</span>
                           </Link>
                         </td>
@@ -320,16 +303,10 @@ function UptimePage() {
                         <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                  isGood ? "bg-emerald-500" : isWarning ? "bg-amber-500" : "bg-red-500"
-                                }`}
-                                style={{ width: `${Math.min(v.uptimePct, 100)}%` }}
-                              />
+                              <div className={`h-full rounded-full transition-all duration-500 ${isGood ? "bg-emerald-500" : isWarning ? "bg-amber-500" : "bg-red-500"}`}
+                                style={{ width: `${Math.min(v.uptimePct, 100)}%` }} />
                             </div>
-                            <span className={`text-sm font-bold w-14 text-right ${
-                              isGood ? "text-emerald-400" : isWarning ? "text-amber-400" : "text-red-400"
-                            }`}>
+                            <span className={`text-sm font-bold w-14 text-right ${isGood ? "text-emerald-400" : isWarning ? "text-amber-400" : "text-red-400"}`}>
                               {v.uptimePct.toFixed(1)}%
                             </span>
                           </div>
@@ -339,43 +316,24 @@ function UptimePage() {
                             {(v.blockHistory || []).map((status: string, bi: number) => {
                               let blockColor = "";
                               let titleText = "";
-                              
-                              if (status === "signed") {
-                                blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30";
-                                titleText = "Signed";
-                              } else if (status === "precommit") {
-                                blockColor = "bg-amber-500 hover:bg-amber-400 shadow-sm shadow-amber-500/30";
-                                titleText = "Pre-committed";
-                              } else {
-                                blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30";
-                                titleText = "Missed";
-                              }
-                              
+                              if (status === "signed") { blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30"; titleText = "Signed"; }
+                              else if (status === "precommit") { blockColor = "bg-amber-500 hover:bg-amber-400 shadow-sm shadow-amber-500/30"; titleText = "Pre-committed"; }
+                              else { blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30"; titleText = "Missed"; }
                               return (
-                                <div
-                                  key={bi}
-                                  title={`Block #${latestHeight - (Math.min(window, 50) - 1) + bi}: ${titleText}`}
-                                  className={`w-[6px] h-6 rounded-sm transition-all duration-300 hover:scale-150 hover:z-10 cursor-pointer ${blockColor}`}
-                                />
+                                <div key={bi} title={`Block #${latestHeight - (Math.min(window, 50) - 1) + bi}: ${titleText}`}
+                                  className={`w-[6px] h-6 rounded-sm transition-all duration-300 hover:scale-150 hover:z-10 cursor-pointer ${blockColor}`} />
                               );
                             })}
                           </div>
                         </td>
                         <td className="p-4 text-right font-mono text-xs">
-                          <span className={v.missed > 0 ? "text-red-400 font-bold" : "text-muted-foreground"}>
-                            {v.missed}
-                          </span>
+                          <span className={v.missed > 0 ? "text-red-400 font-bold" : "text-muted-foreground"}>{v.missed}</span>
                         </td>
                         <td className="p-4 text-center">
-                          {v.tombstoned ? (
-                            <XCircle className="w-5 h-5 text-red-500 inline" />
-                          ) : isGood ? (
-                            <CheckCircle className="w-5 h-5 text-emerald-400 inline" />
-                          ) : isWarning ? (
-                            <AlertTriangle className="w-5 h-5 text-amber-400 inline" />
-                          ) : (
-                            <XCircle className="w-5 h-5 text-red-400 inline" />
-                          )}
+                          {v.tombstoned ? <XCircle className="w-5 h-5 text-red-500 inline" /> :
+                           isGood ? <CheckCircle className="w-5 h-5 text-emerald-400 inline" /> :
+                           isWarning ? <AlertTriangle className="w-5 h-5 text-amber-400 inline" /> :
+                           <XCircle className="w-5 h-5 text-red-400 inline" />}
                         </td>
                         <td className="p-4 text-center">
                           <button onClick={() => toggleRow(v.operator_address)} className="text-muted-foreground hover:text-violet-400 transition-colors">
@@ -417,10 +375,7 @@ function UptimePage() {
 function StatCard({ label, value, icon }: { label: string; value: string | number; icon: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 hover:border-violet-500/20 transition-colors">
-      <div className="flex items-center gap-2 text-muted-foreground mb-2">
-        {icon}
-        <span className="text-[11px] uppercase tracking-wider">{label}</span>
-      </div>
+      <div className="flex items-center gap-2 text-muted-foreground mb-2">{icon}<span className="text-[11px] uppercase tracking-wider">{label}</span></div>
       <p className="font-bold text-lg tabular-nums">{value}</p>
     </div>
   );
@@ -430,13 +385,8 @@ function HealthBar({ label, count, total, color, textColor }: { label: string; c
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
     <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-muted-foreground">{label}</span>
-        <span className={`font-semibold ${textColor}`}>{count}</span>
-      </div>
-      <div className="h-2 rounded-full bg-muted overflow-hidden">
-        <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
-      </div>
+      <div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground">{label}</span><span className={`font-semibold ${textColor}`}>{count}</span></div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden"><div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} /></div>
     </div>
   );
 }
