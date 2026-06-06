@@ -18,7 +18,7 @@ const BAR_COLORS = {
   high: "#D946EF",    // pink terang
   medium: "#8B5CF6",  // ungu terang
   low: "#06B6D4",     // cyan terang
-  empty: "#374151",   // abu-abu gelap
+  empty: "#FB923C",   // abu-abu gelap
 };
 
 function getBarColor(txs: number): string {
