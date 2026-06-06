@@ -4,6 +4,7 @@ import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill, StatCard } from "@/components/ui/primitives";
 import { NETWORK } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
+import { ValidatorAvatar } from "@/components/shared/ValidatorAvatar";
 import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -17,37 +18,6 @@ export const Route = createFileRoute("/staking/")({
 
 type Action = "Delegate" | "Redelegate" | "Undelegate";
 type FilterType = "all" | "active" | "inactive" | "jailed";
-
-// ===== VALIDATOR AVATAR COMPONENT =====
-function ValidatorAvatar({ identity, moniker }: { identity?: string; moniker?: string }) {
-  const { data: avatarUrl } = useQuery({
-    queryKey: ["keybase-avatar", identity],
-    queryFn: async () => {
-      if (!identity) return null;
-      try {
-        const res = await fetch(`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`);
-        const data = await res.json();
-        return data?.them?.[0]?.pictures?.primary?.url || null;
-      } catch {
-        return null;
-      }
-    },
-    staleTime: 24 * 60 * 60_000,
-    enabled: !!identity,
-  });
-
-  const initials = (moniker || "??").slice(0, 2).toUpperCase();
-
-  return (
-    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 overflow-hidden">
-      {avatarUrl ? (
-        <img src={avatarUrl} alt={moniker || ""} className="w-full h-full object-cover" />
-      ) : (
-        <span className="text-xs font-bold text-violet-400">{initials}</span>
-      )}
-    </div>
-  );
-}
 
 function StakingListPage() {
   const [q, setQ] = useState("");
