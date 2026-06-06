@@ -1,13 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
-import { NETWORK } from "@/data/network";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import {
   Fuel, Zap, TrendingUp, Clock, Activity, BarChart3,
-  Database, Users, Coins, ArrowRight, Globe, ExternalLink,
-  Gauge, Flame, Droplets, Wind, Timer, Radio
+  Users, ChevronRight, Gauge, Flame, Wind,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -27,7 +25,8 @@ function useGasData() {
       ]);
 
       const txs = (txsRes?.items || []).map((tx: any) => ({
-        hash: tx.hash?.slice(0, 10) + "...",
+        fullHash: tx.hash,
+        hash: (tx.hash || "").slice(0, 12) + "...",
         gas_price: Number(tx.gas_price || 0) / 1e9,
         gas_used: Number(tx.gas_used || 0),
         gas_limit: Number(tx.gas_limit || 0),
@@ -70,7 +69,7 @@ function GasTrackerPage() {
     { key: "fast" as const, label: "Fast", icon: <Flame className="w-5 h-5" />, value: gasPrices.fast, color: "from-amber-500 to-orange-500", textColor: "text-amber-400", bgColor: "bg-amber-500/10", borderColor: "border-amber-500/30" },
   ];
 
-  const feeEstimates = {
+  const feeEstimates: Record<string, { transfer: number; contract: number }> = {
     slow: { transfer: 21000, contract: 250000 },
     average: { transfer: 21000, contract: 250000 },
     fast: { transfer: 21000, contract: 250000 },
@@ -217,14 +216,12 @@ function GasTrackerPage() {
           <h2 className="font-semibold inline-flex items-center gap-2">
             <Activity className="w-5 h-5 text-violet-400" /> Recent Transactions
           </h2>
-          <a
-            href="https://mainnet.qie.digital/txs"
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            to="/transactions"
             className="text-xs text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1"
           >
-            View all <ExternalLink className="w-3 h-3" />
-          </a>
+            View all <ChevronRight className="w-3 h-3" />
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -242,14 +239,13 @@ function GasTrackerPage() {
               {data?.txs?.map((tx: any, i: number) => (
                 <tr key={i} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
                   <td className="p-3">
-                    <a
-                      href={`https://mainnet.qie.digital/tx/${tx.hash?.replace('...', '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-mono text-xs text-violet-400 hover:text-violet-300"
+                    <Link
+                      to="/tx/$hash"
+                      params={{ hash: tx.fullHash }}
+                      className="font-mono text-xs text-violet-400 hover:text-violet-300 transition-colors"
                     >
                       {tx.hash}
-                    </a>
+                    </Link>
                   </td>
                   <td className="p-3 text-xs text-muted-foreground">{tx.method}</td>
                   <td className="p-3">
@@ -260,6 +256,11 @@ function GasTrackerPage() {
                   <td className="p-3 text-right font-mono text-xs text-amber-400">{tx.fee.toFixed(6)}</td>
                 </tr>
               ))}
+              {(!data?.txs || data.txs.length === 0) && (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground text-sm">No recent transactions.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
