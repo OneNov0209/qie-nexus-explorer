@@ -8,6 +8,7 @@ import { useWallet } from "@/lib/wallet";
 import { toast } from "sonner";
 import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ValidatorAvatar } from "@/components/shared/ValidatorAvatar";
 import {
   Wallet, Coins, ArrowDownLeft, ArrowUpRight, Layers,
   Copy, Check, TrendingUp, Clock, Gift, FileText, Loader2
@@ -42,35 +43,30 @@ function AddressDetail() {
   const isEvmAddr = address.startsWith("0x");
   const isValidator = address.startsWith("qievaloper");
 
-  // Balance
   const { data: balance } = useQuery({
     queryKey: ["bal", address],
     queryFn: () => cosmos.balance(address).catch(() => ({ balances: [] })),
     refetchInterval: 30_000,
   });
 
-  // Delegations
   const { data: dels } = useQuery({
     queryKey: ["dels", address],
     queryFn: () => cosmos.delegations(address).catch(() => ({ delegation_responses: [] })),
     refetchInterval: 30_000,
   });
 
-  // Rewards
   const { data: rewards } = useQuery({
     queryKey: ["rewards", address],
     queryFn: () => cosmos.rewards(address).catch(() => ({ rewards: [], total: [] })),
     refetchInterval: 30_000,
   });
 
-  // Unbonding
   const { data: unb } = useQuery({
     queryKey: ["unb", address],
     queryFn: () => cosmos.unbonding(address).catch(() => ({ unbonding_responses: [] })),
     refetchInterval: 30_000,
   });
 
-  // EVM data
   const { data: evmData } = useQuery({
     queryKey: ["evm-addr", address],
     enabled: isEvmAddr,
@@ -88,7 +84,6 @@ function AddressDetail() {
     },
   });
 
-  // Recent TXs (Cosmos)
   const { data: txData } = useQuery({
     queryKey: ["tx-search", address],
     queryFn: async () => {
@@ -112,7 +107,6 @@ function AddressDetail() {
     enabled: !isEvmAddr,
   });
 
-  // EVM recent TXs
   const { data: evmTxs } = useQuery({
     queryKey: ["evm-txs", address],
     queryFn: async () => {
@@ -226,7 +220,6 @@ function AddressDetail() {
             </div>
             {isValidator && <Link to="/staking/$validator" params={{ validator: address }} className="text-xs text-primary hover:underline mt-2 inline-block">View validator profile →</Link>}
           </div>
-          {/* Claim button */}
           {isOwn && cw.address && (
             <button onClick={claimAll} disabled={claiming || !validatorsWithRewards.length}
               className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2 disabled:opacity-50 hover:shadow-lg hover:shadow-violet-500/25 transition-all">
@@ -293,7 +286,7 @@ function AddressDetail() {
           {enrichedDels.length === 0 ? <div className="px-5 py-10 text-center text-sm text-muted-foreground">No delegations</div> : enrichedDels.map((d) => (
             <div key={d.valoper} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition gap-3 flex-wrap">
               <Link to="/staking/$validator" params={{ validator: d.valoper }} className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 text-xs font-bold">{d.moniker?.slice(0, 2).toUpperCase() || "??"}</div>
+                <ValidatorAvatar identity={d.identity} moniker={d.moniker} size="sm" />
                 <div className="min-w-0"><div className="font-medium truncate text-sm">{d.moniker || shorten(d.valoper, 10, 6)}</div><div className="text-[11px] text-muted-foreground font-mono truncate">{shorten(d.valoper, 14, 8)}</div></div>
                 {d.jailed && <Pill variant="danger">Jailed</Pill>}
               </Link>
