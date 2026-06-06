@@ -6,10 +6,10 @@
  * MetaMask is for EVM transfers only - NOT for staking.
  *
  * Uses Keplr's offline signer + cosmjs SigningStargateClient.
- * RPC calls go through /api/rpc proxy to avoid CORS issues.
+ * Falls back to REST API broadcast if WebSocket is unavailable (Vercel).
  */
 import { SigningStargateClient, defaultRegistryTypes, GasPrice, calculateFee, type DeliverTxResponse } from "@cosmjs/stargate";
-import { Registry } from "@cosmjs/proto-signing";
+import { Registry, encodeTx } from "@cosmjs/proto-signing";
 import { PubKey } from "cosmjs-types/cosmos/crypto/secp256k1/keys";
 import { MsgDelegate, MsgUndelegate, MsgBeginRedelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
 import { MsgWithdrawDelegatorReward } from "cosmjs-types/cosmos/distribution/v1beta1/tx";
@@ -18,8 +18,8 @@ import { NETWORK } from "@/data/network";
 
 const ETH_PUBKEY_TYPE = "/ethermint.crypto.v1.ethsecp256k1.PubKey";
 
-// Use proxy to avoid CORS
-const RPC_ENDPOINT = "/api/rpc";
+// Use proxy to avoid CORS for HTTP, but WebSocket needs direct RPC
+const RPC_ENDPOINT = NETWORK.rpc;
 
 function makeRegistry() {
   const reg = new Registry(defaultRegistryTypes);
@@ -40,11 +40,21 @@ async function getSigner() {
 
 async function connect() {
   const signer = await getSigner();
-  // Use proxy RPC to avoid CORS errors
-  const client = await SigningStargateClient.connectWithSigner(RPC_ENDPOINT, signer, {
-    registry: makeRegistry(),
-    gasPrice: GasPrice.fromString(`25000000000${NETWORK.denom}`),
-  });
+  // Try WebSocket first, fall back to HTTP
+  let client: SigningStargateClient;
+  try {
+    client = await SigningStargateClient.connectWithSigner(RPC_ENDPOINT, signer, {
+      registry: makeRegistry(),
+      gasPrice: GasPrice.fromString(`25000000000${NETWORK.denom}`),
+    });
+  } catch (wsErr) {
+    // WebSocket failed (likely on Vercel), create client without RPC connection
+    console.warn("WebSocket unavailable, using REST broadcast fallback");
+    // Use offline signer directly - we'll broadcast via REST
+    client = await SigningStargateClient.offline(signer, {
+      registry: makeRegistry(),
+    });
+  }
   const accounts = await signer.getAccounts();
   if (!accounts[0]) throw new Error("No account found in wallet");
   return { client, sender: accounts[0].address };
@@ -66,9 +76,51 @@ const DEFAULT_FEE = () =>
 async function broadcast(msgs: any[], memo = ""): Promise<DeliverTxResponse> {
   const { client, sender } = await connect();
   const fee = DEFAULT_FEE();
-  const res = await client.signAndBroadcast(sender, msgs, fee, memo);
-  if (res.code !== 0) throw new Error(res.rawLog || `Tx failed (code ${res.code})`);
-  return res;
+
+  try {
+    // Try WebSocket broadcast first
+    const res = await client.signAndBroadcast(sender, msgs, fee, memo);
+    if (res.code !== 0) throw new Error(res.rawLog || `Tx failed (code ${res.code})`);
+    return res;
+  } catch (err: any) {
+    // WebSocket failed - try REST API broadcast
+    if (err?.message?.includes("WebSocket") || err?.message?.includes("protocol") || err?.message?.includes("ws")) {
+      try {
+        // Sign the transaction
+        const signed = await client.sign(sender, msgs, fee, memo);
+        const txBytes = client.encodeTx(signed);
+        const txBase64 = Buffer.from(txBytes).toString("base64");
+
+        // Broadcast via REST API
+        const broadcastRes = await fetch(`/api/rest/cosmos/tx/v1beta1/txs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tx_bytes: txBase64,
+            mode: "BROADCAST_MODE_SYNC",
+          }),
+        });
+        const data = await broadcastRes.json();
+
+        if (data?.tx_response?.code !== undefined && data.tx_response.code !== 0) {
+          throw new Error(data.tx_response.raw_log || "Tx failed");
+        }
+
+        return {
+          code: 0,
+          transactionHash: data?.tx_response?.txhash || "",
+          gasUsed: Number(data?.tx_response?.gas_used || 0),
+          gasWanted: Number(data?.tx_response?.gas_wanted || 0),
+          height: Number(data?.tx_response?.height || 0),
+          rawLog: data?.tx_response?.raw_log || "",
+          events: data?.tx_response?.events || [],
+        } as unknown as DeliverTxResponse;
+      } catch (restErr: any) {
+        throw new Error(`Broadcast failed: ${restErr?.message || restErr}`);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
