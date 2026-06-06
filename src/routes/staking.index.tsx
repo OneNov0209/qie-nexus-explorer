@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill, StatCard } from "@/components/ui/primitives";
-import { NETWORK, WALLET_LOGOS } from "@/data/network";
+import { NETWORK } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
 import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
 import { toast } from "sonner";
@@ -17,6 +17,37 @@ export const Route = createFileRoute("/staking/")({
 
 type Action = "Delegate" | "Redelegate" | "Undelegate";
 type FilterType = "all" | "active" | "inactive" | "jailed";
+
+// ===== VALIDATOR AVATAR COMPONENT =====
+function ValidatorAvatar({ identity, moniker }: { identity?: string; moniker?: string }) {
+  const { data: avatarUrl } = useQuery({
+    queryKey: ["keybase-avatar", identity],
+    queryFn: async () => {
+      if (!identity) return null;
+      try {
+        const res = await fetch(`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`);
+        const data = await res.json();
+        return data?.them?.[0]?.pictures?.primary?.url || null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 24 * 60 * 60_000,
+    enabled: !!identity,
+  });
+
+  const initials = (moniker || "??").slice(0, 2).toUpperCase();
+
+  return (
+    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 overflow-hidden">
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={moniker || ""} className="w-full h-full object-cover" />
+      ) : (
+        <span className="text-xs font-bold text-violet-400">{initials}</span>
+      )}
+    </div>
+  );
+}
 
 function StakingListPage() {
   const [q, setQ] = useState("");
@@ -202,19 +233,13 @@ function StakingListPage() {
                 const bondedOk = v.status === "BOND_STATUS_BONDED";
                 const myDel = myDels.find((d) => d.delegation?.validator_address === v.operator_address);
                 const myAmt = myDel?.balance?.amount ?? "0";
-                const identity = v.description?.identity;
 
                 return (
                   <tr key={v.operator_address} className="border-b border-border/30 hover:bg-muted/20 transition-colors group">
                     <td className="p-4 text-muted-foreground tabular-nums text-xs">{i + 1}</td>
                     <td className="p-4">
                       <Link to="/staking/$validator" params={{ validator: v.operator_address }} className="flex items-center gap-3 group/link">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center shrink-0 overflow-hidden">
-                          {identity ? (
-                            <img src={`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`} alt=""
-                              className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                          ) : (<User className="w-4 h-4 text-violet-400" />)}
-                        </div>
+                        <ValidatorAvatar identity={v.description?.identity} moniker={v.description?.moniker} />
                         <div>
                           <div className="font-medium group-hover/link:text-violet-400 transition-colors flex items-center gap-1.5">
                             {v.description?.moniker ?? shorten(v.operator_address)}
