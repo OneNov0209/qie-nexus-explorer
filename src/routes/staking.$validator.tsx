@@ -2,10 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE, shorten } from "@/lib/api";
 import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
-import { NETWORK, WALLET_LOGOS } from "@/data/network";
+import { NETWORK } from "@/data/network";
 import { useWallet } from "@/lib/wallet";
-import { ArrowLeft, User, Layers, Gift, Coins, Percent, Shield, AlertTriangle, ExternalLink, Copy, TrendingUp, FileText, Key, Unlock } from "lucide-react";
+import { delegate, undelegate, redelegate, withdrawAllRewards } from "@/lib/wallet-tx";
+import { toast } from "sonner";
+import { ArrowLeft, User, Layers, Gift, Coins, Percent, Shield, AlertTriangle, ExternalLink, Copy, TrendingUp, FileText, Key, Unlock, Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import dayjs from "dayjs";
 import { useState } from "react";
 
@@ -15,6 +18,8 @@ export const Route = createFileRoute("/staking/$validator")({
 });
 
 const PIE_COLORS = ["#8B5CF6", "#D946EF", "#06B6D4", "#10B981", "#F59E0B", "#EF4444"];
+
+type Action = "Delegate" | "Redelegate" | "Undelegate";
 
 async function fetchValidatorAddresses(operatorAddr: string) {
   try {
@@ -35,6 +40,11 @@ async function fetchValidatorAddresses(operatorAddr: string) {
 function ValidatorDetail() {
   const { validator } = Route.useParams();
   const { cosmos: cw } = useWallet();
+  const [modal, setModal] = useState<{ type: Action; val: any } | null>(null);
+  const [amount, setAmount] = useState("");
+  const [dstVal, setDstVal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [claiming, setClaiming] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["validator-detail", validator],
@@ -135,7 +145,8 @@ function ValidatorDetail() {
 
   const myDel = userData?.myDel;
   const myStake = myDel?.balance?.amount ?? "0";
-  const myReward = userData?.myReward?.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
+  const myRewardQ = userData?.myReward?.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
+  const validatorsWithRewards = userData?.myReward?.reward ? [validator] : [];
 
   const vpPieData = [
     { name: moniker, value: totalTokens / 1e18 },
@@ -146,6 +157,41 @@ function ValidatorDetail() {
     { name: "Self Delegated", value: selfDelegationAmount / 1e18 },
     { name: "From Delegators", value: Math.max(0, (totalTokens - selfDelegationAmount) / 1e18) },
   ];
+
+  function openModal(type: Action) {
+    if (!cw.address) return toast.error("Connect Keplr wallet first");
+    setModal({ type, val: { valoper: operatorAddr, amount: type === "Delegate" ? 0 : Number(myStake), moniker: moniker } });
+    setAmount("");
+    setDstVal("");
+  }
+
+  async function submit() {
+    if (!modal) return;
+    if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount");
+    if (modal.type === "Redelegate" && !dstVal) return toast.error("Pick destination validator");
+    setBusy(true);
+    try {
+      let res;
+      if (modal.type === "Delegate") res = await delegate(operatorAddr, amount);
+      else if (modal.type === "Undelegate") res = await undelegate(operatorAddr, amount);
+      else res = await redelegate(operatorAddr, dstVal, amount);
+      toast.success(`${modal.type} success`, { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
+      setModal(null);
+    } catch (e: any) {
+      toast.error(`${modal.type} failed`, { description: e?.message ?? String(e) });
+    } finally { setBusy(false); }
+  }
+
+  async function claimAll() {
+    if (!cw.address) return toast.error("Connect Keplr wallet first");
+    setClaiming(true);
+    try {
+      const res = await withdrawAllRewards([operatorAddr]);
+      toast.success("Rewards claimed", { description: `Tx: ${shorten(res.transactionHash, 10, 8)}` });
+    } catch (e: any) {
+      toast.error("Claim failed", { description: e?.message ?? String(e) });
+    } finally { setClaiming(false); }
+  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -168,16 +214,21 @@ function ValidatorDetail() {
             </div>
           </div>
         </div>
-        <div className="ml-auto">
-          <a
-            href="https://wallet.keplr.app/chains/qie"
-            target="_blank"
-            rel="noreferrer"
-            className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-1.5 hover:shadow-lg hover:shadow-violet-500/25 transition-all"
-          >
-            Stake with Keplr <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
+        {/* Action buttons */}
+        {cw.address && (
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button onClick={() => openModal("Delegate")} className="bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-xl px-3 py-1.5 text-sm transition-colors">Delegate</button>
+            {Number(myStake) > 0 && (
+              <>
+                <button onClick={() => openModal("Redelegate")} className="bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-xl px-3 py-1.5 text-sm transition-colors">Redelegate</button>
+                <button onClick={() => openModal("Undelegate")} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl px-3 py-1.5 text-sm transition-colors">Undelegate</button>
+                <button onClick={claimAll} disabled={claiming} className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl px-3 py-1.5 text-sm transition-colors flex items-center gap-1">
+                  {claiming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Gift className="w-3.5 h-3.5" />} Claim
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats */}
@@ -192,7 +243,7 @@ function ValidatorDetail() {
       {cw.address && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <InfoCard icon={<Layers className="w-4 h-4 text-violet-400" />} label="My Stake" value={`${formatQIE(myStake, 4)} ${NETWORK.symbol}`} />
-          <InfoCard icon={<Gift className="w-4 h-4 text-amber-400" />} label="My Pending Reward" value={`${formatQIE(myReward, 6)} ${NETWORK.symbol}`} />
+          <InfoCard icon={<Gift className="w-4 h-4 text-amber-400" />} label="My Pending Reward" value={`${formatQIE(myRewardQ, 6)} ${NETWORK.symbol}`} />
           <InfoCard icon={<Coins className="w-4 h-4 text-emerald-400" />} label="Outstanding Rewards" value={`${formatQIE(outstandingRewards, 4)} ${NETWORK.symbol}`} />
         </div>
       )}
@@ -311,6 +362,39 @@ function ValidatorDetail() {
           <InfoCardSmall label="Max Rate" value={`${(maxComm * 100).toFixed(0)}%`} />
         </div>
       </Card>
+
+      {/* Dialog */}
+      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
+        <DialogContent className="border-border max-w-md">
+          <DialogHeader><DialogTitle>{modal?.type} — {moniker}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="text-xs text-muted-foreground">Validator: <span className="font-mono">{shorten(operatorAddr, 14, 10)}</span></div>
+            {modal?.type === "Redelegate" && (
+              <div>
+                <label className="text-xs text-muted-foreground">Destination Validator</label>
+                <select value={dstVal} onChange={(e) => setDstVal(e.target.value)} className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1">
+                  <option value="">Select validator…</option>
+                  {topDelegators.map((x: any) => (<option key={x.address} value={x.address}>{x.name}</option>))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="text-xs text-muted-foreground flex justify-between">
+                <span>Amount ({NETWORK.symbol})</span>
+                {modal?.type === "Delegate" ? <span>Available: —</span> : <span>Staked: {formatQIE(myStake, 4)}</span>}
+              </label>
+              <input type="number" step="0.0001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
+                className="w-full rounded-xl border border-border/60 bg-card px-3 py-2 text-sm mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setModal(null)} className="rounded-xl border border-border/60 px-4 py-2 text-sm hover:bg-muted/30">Cancel</button>
+            <button onClick={submit} disabled={busy} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Confirm {modal?.type}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
