@@ -2,9 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { NETWORK } from "@/data/network";
 import { 
   Activity, Boxes, Coins, Users, Layers, Shield, 
-  Search, ArrowRight, Zap, Globe, Server, 
-  GitBranch, Code2, ExternalLink, Sparkles,
-  ChevronRight, TrendingUp, Database, Radio
+  ArrowRight, Zap, Globe, 
+  GitBranch, ExternalLink, Sparkles,
+  ChevronRight, Database
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
@@ -67,25 +67,42 @@ function HomePage() {
   ];
 
   const stats_cards = [
-    { label: "Latest Block", value: stats?.height ? Number(stats.height).toLocaleString() : "—", icon: <Database className="w-5 h-5" />, color: "from-violet-500 to-fuchsia-500" },
-    { label: "Validators", value: stats?.validators?.toLocaleString() || "—", icon: <Users className="w-5 h-5" />, color: "from-blue-500 to-cyan-500" },
-    { label: "Total Supply", value: stats?.supply ? formatQIE(stats.supply, 0) : "—", icon: <Coins className="w-5 h-5" />, color: "from-amber-500 to-orange-500" },
-    { label: "Bonded", value: stats?.bonded ? formatQIE(stats.bonded, 0) : "—", icon: <Layers className="w-5 h-5" />, color: "from-emerald-500 to-teal-500" },
+    { label: "Latest Block", value: stats?.height ? Number(stats.height).toLocaleString() : "—", icon: <Database className="w-5 h-5 text-white" />, color: "from-violet-500 to-fuchsia-500" },
+    { label: "Validators", value: stats?.validators?.toLocaleString() || "—", icon: <Users className="w-5 h-5 text-white" />, color: "from-blue-500 to-cyan-500" },
+    { label: "Total Supply", value: stats?.supply ? formatQIE(stats.supply, 0) : "—", icon: <Coins className="w-5 h-5 text-white" />, color: "from-amber-500 to-orange-500" },
+    { label: "Bonded", value: stats?.bonded ? formatQIE(stats.bonded, 0) : "—", icon: <Layers className="w-5 h-5 text-white" />, color: "from-emerald-500 to-teal-500" },
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* HERO SECTION */}
-      <section className="relative overflow-hidden pt-20 pb-16 md:pt-32 md:pb-24">
+      <section className="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-20 flex-1 flex items-center">
+        {/* Background effects */}
         <div className="absolute inset-0">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-violet-500/20 via-fuchsia-500/10 to-transparent rounded-full blur-3xl opacity-60" />
           <div className="absolute bottom-0 right-0 w-[600px] h-[400px] bg-gradient-to-t from-cyan-500/10 to-transparent rounded-full blur-3xl opacity-40" />
           <div className="absolute top-20 left-10 w-[300px] h-[300px] bg-gradient-to-r from-amber-500/5 to-transparent rounded-full blur-3xl" />
         </div>
 
+        {/* Grid pattern */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black,transparent)]" />
 
         <div className="relative container mx-auto px-4 text-center">
+          {/* Logo */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+            className="mb-8"
+          >
+            <img 
+              src={NETWORK.logo} 
+              alt="QIE Blockchain" 
+              className="w-20 h-20 md:w-24 md:h-24 rounded-full mx-auto ring-4 ring-violet-500/30 shadow-2xl shadow-violet-500/20"
+            />
+          </motion.div>
+
+          {/* Live badge */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -97,6 +114,7 @@ function HomePage() {
             <span className="text-xs text-muted-foreground">Chain ID: {NETWORK.chainId}</span>
           </motion.div>
 
+          {/* Main heading */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -119,6 +137,7 @@ function HomePage() {
             Explore blocks, stake with validators, and participate in governance — all in one place.
           </motion.p>
 
+          {/* CTA Buttons */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -146,11 +165,12 @@ function HomePage() {
             </a>
           </motion.div>
 
+          {/* Live Stats */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.7 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto mt-12"
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto mt-14"
           >
             {stats_cards.map((s, i) => (
               <div
@@ -235,7 +255,7 @@ function HomePage() {
       </section>
 
       {/* FOOTER */}
-      <footer className="border-t border-border/40 py-8">
+      <footer className="border-t border-border/40 py-8 mt-auto">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -253,9 +273,14 @@ function HomePage() {
               <a href="https://discord.com/invite/8DD4kSHBvr" target="_blank" rel="noreferrer" className="hover:text-violet-400 transition-colors">Discord</a>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              © {new Date().getFullYear()} QIE Blockchain. All rights reserved.
-            </p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>© {new Date().getFullYear()} QIE Blockchain</span>
+              <span>·</span>
+              <span>Powered by</span>
+              <a href="https://onenov.xyz" target="_blank" rel="noreferrer" className="text-violet-400 hover:text-violet-300 transition-colors font-medium">
+                OneNov
+              </a>
+            </div>
           </div>
         </div>
       </footer>
