@@ -1,4 +1,3 @@
-```markdown
 # 🚀 QIE Explorer — The Gateway to QIE Blockchain
 
 <div align="center">
@@ -318,7 +317,7 @@ OneNov
 · Vercel — Deployment platform
 
 ---
-
+```
 <div align="center">
   <sub>Built with ❤️ for the QIE Community</sub>
   <br>
