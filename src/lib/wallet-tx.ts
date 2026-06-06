@@ -1,8 +1,12 @@
 /**
  * Cosmos transaction helpers for QIE (Ethermint-based: coinType 60, eth_secp256k1).
  *
- * Uses Keplr's offline signer + cosmjs SigningStargateClient. We register the
- * Ethermint pubkey type URL so the AuthInfo encodes correctly.
+ * IMPORTANT: Staking operations (delegate, undelegate, redelegate, withdraw rewards,
+ * vote) are ONLY available via Keplr wallet (Cosmos SDK transactions).
+ * MetaMask is for EVM transfers only - NOT for staking.
+ *
+ * Uses Keplr's offline signer + cosmjs SigningStargateClient.
+ * RPC calls go through /api/rpc proxy to avoid CORS issues.
  */
 import { SigningStargateClient, defaultRegistryTypes, GasPrice, calculateFee, type DeliverTxResponse } from "@cosmjs/stargate";
 import { Registry } from "@cosmjs/proto-signing";
@@ -13,6 +17,9 @@ import { MsgVote } from "cosmjs-types/cosmos/gov/v1beta1/tx";
 import { NETWORK } from "@/data/network";
 
 const ETH_PUBKEY_TYPE = "/ethermint.crypto.v1.ethsecp256k1.PubKey";
+
+// Use proxy to avoid CORS
+const RPC_ENDPOINT = "/api/rpc";
 
 function makeRegistry() {
   const reg = new Registry(defaultRegistryTypes);
@@ -33,7 +40,8 @@ async function getSigner() {
 
 async function connect() {
   const signer = await getSigner();
-  const client = await SigningStargateClient.connectWithSigner(NETWORK.rpc, signer, {
+  // Use proxy RPC to avoid CORS errors
+  const client = await SigningStargateClient.connectWithSigner(RPC_ENDPOINT, signer, {
     registry: makeRegistry(),
     gasPrice: GasPrice.fromString(`25000000000${NETWORK.denom}`),
   });
@@ -63,6 +71,10 @@ async function broadcast(msgs: any[], memo = ""): Promise<DeliverTxResponse> {
   return res;
 }
 
+/**
+ * Delegate QIE tokens to a validator
+ * Requires: Keplr wallet connected
+ */
 export async function delegate(validator: string, qieAmount: string) {
   const { sender } = await connect();
   const msg = {
@@ -76,6 +88,10 @@ export async function delegate(validator: string, qieAmount: string) {
   return broadcast([msg], "Delegate via QIE Explorer");
 }
 
+/**
+ * Undelegate QIE tokens from a validator
+ * Requires: Keplr wallet connected
+ */
 export async function undelegate(validator: string, qieAmount: string) {
   const { sender } = await connect();
   const msg = {
@@ -89,6 +105,10 @@ export async function undelegate(validator: string, qieAmount: string) {
   return broadcast([msg], "Undelegate via QIE Explorer");
 }
 
+/**
+ * Redelegate QIE tokens from one validator to another
+ * Requires: Keplr wallet connected
+ */
 export async function redelegate(srcValidator: string, dstValidator: string, qieAmount: string) {
   const { sender } = await connect();
   const msg = {
@@ -103,6 +123,10 @@ export async function redelegate(srcValidator: string, dstValidator: string, qie
   return broadcast([msg], "Redelegate via QIE Explorer");
 }
 
+/**
+ * Withdraw all staking rewards
+ * Requires: Keplr wallet connected
+ */
 export async function withdrawAllRewards(validators: string[]) {
   if (!validators.length) throw new Error("No validators with rewards");
   const { sender } = await connect();
@@ -116,6 +140,11 @@ export async function withdrawAllRewards(validators: string[]) {
   return broadcast(msgs, "Claim rewards via QIE Explorer");
 }
 
+/**
+ * Vote on a governance proposal
+ * Requires: Keplr wallet connected
+ * @param option 1=YES, 2=ABSTAIN, 3=NO, 4=NO_WITH_VETO
+ */
 export async function voteProposal(proposalId: string | number, option: 1 | 2 | 3 | 4) {
   const { sender } = await connect();
   const msg = {
