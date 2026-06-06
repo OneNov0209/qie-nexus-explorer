@@ -30,18 +30,20 @@ export const useWallet = create<WalletStore>((set) => ({
   disconnectCosmos: () => set({ cosmos: {} }),
 }));
 
-// ---- MetaMask / EVM ----
+// ---- MetaMask / EVM (also used by QIE Wallet) ----
 declare global {
   interface Window {
     ethereum?: any;
     keplr?: any;
+    qie?: any;
+    leap?: any;
     getOfflineSigner?: any;
   }
 }
 
 export async function connectMetaMask() {
   if (typeof window === "undefined" || !window.ethereum) {
-    throw new Error("MetaMask not detected. Please install MetaMask.");
+    throw new Error("No EVM wallet detected. Please install MetaMask or QIE Wallet.");
   }
   const eth = window.ethereum;
 
@@ -102,6 +104,11 @@ export async function connectMetaMask() {
   });
 }
 
+// QIE Wallet is EVM-based, same as MetaMask
+export async function connectQieWallet() {
+  return connectMetaMask();
+}
+
 // ---- Keplr / Cosmos ----
 export async function connectKeplr(provider: "keplr" | "leap" = "keplr") {
   const w = window as any;
@@ -117,10 +124,10 @@ export async function connectKeplr(provider: "keplr" | "leap" = "keplr") {
   await p.enable(NETWORK.cosmosChainId);
   const key = await p.getKey(NETWORK.cosmosChainId);
 
-  // Fetch balance from REST API
+  // Fetch balance from REST API via proxy
   let balance = "0";
   try {
-    const res = await fetch(`${NETWORK.rest}/cosmos/bank/v1beta1/balances/${key.bech32Address}`);
+    const res = await fetch(`/api/rest/cosmos/bank/v1beta1/balances/${key.bech32Address}`);
     const data = await res.json();
     const qieBalance = data?.balances?.find((b: any) => b.denom === NETWORK.denom);
     if (qieBalance) {
