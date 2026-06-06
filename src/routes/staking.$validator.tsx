@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { ArrowLeft, User, Layers, Gift, Coins, Percent, Shield, AlertTriangle, ExternalLink, Copy, TrendingUp, FileText, Key, Unlock, Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ValidatorAvatar } from "@/components/shared/ValidatorAvatar";
 import dayjs from "dayjs";
 import { useState } from "react";
 
@@ -146,7 +147,6 @@ function ValidatorDetail() {
   const myDel = userData?.myDel;
   const myStake = myDel?.balance?.amount ?? "0";
   const myRewardQ = userData?.myReward?.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
-  const validatorsWithRewards = userData?.myReward?.reward ? [validator] : [];
 
   const vpPieData = [
     { name: moniker, value: totalTokens / 1e18 },
@@ -201,12 +201,7 @@ function ValidatorDetail() {
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center overflow-hidden">
-            {identity ? (
-              <img src={`https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`} alt=""
-                className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            ) : (<User className="w-6 h-6 text-violet-400" />)}
-          </div>
+          <ValidatorAvatar identity={identity} moniker={moniker} size="lg" />
           <div>
             <h1 className="text-xl font-bold">{moniker}</h1>
             <div className="flex items-center gap-2">
