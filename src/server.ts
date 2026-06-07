@@ -101,12 +101,49 @@ async function handleApiEvm(request: Request): Promise<Response> {
   }
 }
 
+// --- AI Proxy (Gemini) ---
+async function handleApiAI(request: Request): Promise<Response> {
+  try {
+    const body = await request.json();
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "AI not configured" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    const data = await response.json();
+    return new Response(JSON.stringify(data), {
+      status: response.status,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "AI unavailable" }), {
+      status: 502,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    });
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const url = new URL(request.url);
 
       // API Proxy routes
+      if (url.pathname.startsWith("/api/ai")) {
+        return handleApiAI(request);
+      }
       if (url.pathname.startsWith("/api/rpc")) {
         return handleApiRpc(request);
       }
