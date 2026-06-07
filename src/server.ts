@@ -117,7 +117,7 @@ async function handleApiAI(request: Request): Promise<Response> {
     // Retry up to 3 times with increasing delay
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-8b:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
