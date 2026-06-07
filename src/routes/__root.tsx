@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Footer } from "@/components/layout/Footer";
+import { AIAssistant } from "@/components/ai/AIAssistant";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -97,6 +98,7 @@ function RootComponent() {
         <div className="min-h-screen">
           <Outlet />
         </div>
+        <AIAssistant />
         <Toaster theme="dark" />
       </QueryClientProvider>
     );
@@ -114,6 +116,7 @@ function RootComponent() {
           <Footer />
         </div>
       </div>
+      <AIAssistant />
       <Toaster theme="dark" />
     </QueryClientProvider>
   );
