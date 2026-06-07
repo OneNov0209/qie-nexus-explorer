@@ -123,7 +123,7 @@ async function handleApiAI(request: Request): Promise<Response> {
         "X-Title": "QIE Explorer",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "meta-llama/llama-3.2-3b-instruct:free",
         messages: body.messages || [
           { role: "user", content: body.contents?.[0]?.parts?.[0]?.text || "Hello" }
         ],
