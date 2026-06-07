@@ -101,7 +101,7 @@ async function handleApiEvm(request: Request): Promise<Response> {
   }
 }
 
-// --- AI Proxy (Gemini) ---
+// --- AI Proxy (Gemini) with retry ---
 async function handleApiAI(request: Request): Promise<Response> {
   try {
     const body = await request.json();
@@ -114,17 +114,38 @@ async function handleApiAI(request: Request): Promise<Response> {
       });
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+    // Retry up to 3 times with increasing delay
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+
+      // If rate limited, wait and retry
+      if (response.status === 429) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+          continue;
+        }
+        return new Response(JSON.stringify({ error: "AI rate limited, please try again in a moment" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
       }
-    );
-    const data = await response.json();
-    return new Response(JSON.stringify(data), {
-      status: response.status,
+
+      const data = await response.json();
+      return new Response(JSON.stringify(data), {
+        status: response.status,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: "AI failed after retries" }), {
+      status: 500,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
   } catch (e) {
