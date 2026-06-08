@@ -41,16 +41,24 @@ export function Sidebar() {
         collapsed ? "w-[76px]" : "w-[260px]"
       )}
     >
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-border/60">
-        <Link to="/" className="flex items-center gap-3 group">
-          <img src={NETWORK.logo} alt="QIE" className="w-9 h-9 rounded-full ring-1 ring-primary/40 group-hover:ring-primary transition" />
+      {/* Header dengan tombol collapse */}
+      <div className="flex items-center justify-between px-4 h-16 border-b border-border/60">
+        <Link to="/" className="flex items-center gap-3 group min-w-0">
+          <img src={NETWORK.logo} alt="QIE" className="w-9 h-9 rounded-full ring-1 ring-primary/40 group-hover:ring-primary transition shrink-0" />
           {!collapsed && (
-            <div className="leading-tight">
+            <div className="leading-tight truncate">
               <div className="font-semibold tracking-tight gradient-text text-lg">QIE Explorer</div>
               <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Mainnet</div>
             </div>
           )}
         </Link>
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-white hover:bg-white/5 transition ml-2"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
@@ -76,15 +84,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
-      <div className="p-3 border-t border-border/60">
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="w-full flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-white py-2 rounded-lg hover:bg-white/5 transition"
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /> Collapse</>}
-        </button>
-      </div>
     </aside>
   );
 }
