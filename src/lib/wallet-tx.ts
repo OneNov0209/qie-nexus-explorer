@@ -1,8 +1,8 @@
 /**
  * Cosmos transaction helpers for QIE (Ethermint-based: coinType 60, eth_secp256k1).
  *
- * Uses Keplr's signAmino + RPC broadcast_tx_sync via proxy.
- * signAmino is the confirmed working method for QIE chain.
+ * Uses Keplr's signAmino + REST API broadcast via /cosmos/tx/v1beta1/txs.
+ * This is the same method used by qied CLI - confirmed working.
  */
 import { NETWORK } from "@/data/network";
 
@@ -33,19 +33,42 @@ async function getKeplr() {
   return keplr;
 }
 
-async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: string): Promise<DeliverTxResponse> {
+function encodeAminoStdTx(signDoc: any, signature: any): string {
+  // Build StdTx in Amino JSON format (same as qied CLI)
+  const stdTx = {
+    msg: signDoc.msgs,
+    fee: signDoc.fee,
+    signatures: [
+      {
+        pub_key: signature.pub_key,
+        signature: signature.signature,
+      },
+    ],
+    memo: signDoc.memo || "",
+  };
+
+  // Return base64 encoded JSON
+  return btoa(JSON.stringify(stdTx));
+}
+
+async function signAndBroadcast(
+  msgs: { typeUrl: string; value: any }[],
+  memo: string
+): Promise<DeliverTxResponse> {
   const keplr = await getKeplr();
   const key = await keplr.getKey(NETWORK.cosmosChainId);
   const address = key.bech32Address;
 
   // Fetch account info
-  const accRes = await fetch(`/api/rest/cosmos/auth/v1beta1/accounts/${address}`).then(r => r.json());
+  const accRes = await fetch(
+    `/api/rest/cosmos/auth/v1beta1/accounts/${address}`
+  ).then((r) => r.json());
   const baseAccount = accRes?.account?.base_account || accRes?.account;
   const accountNumber = String(baseAccount?.account_number || 0);
   const sequence = String(baseAccount?.sequence || 0);
 
-  // Build amino messages (Cosmos SDK format)
-  const aminoMsgs = msgs.map(m => ({
+  // Build Amino messages
+  const aminoMsgs = msgs.map((m) => ({
     type: m.typeUrl
       .replace("/cosmos.staking.v1beta1.", "cosmos-sdk/")
       .replace("/cosmos.distribution.v1beta1.", "cosmos-sdk/")
@@ -66,49 +89,39 @@ async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: s
     memo: memo,
   };
 
-  // Sign with Keplr (signAmino - confirmed working for QIE)
-  const signResult = await keplr.signAmino(NETWORK.cosmosChainId, address, signDoc);
-
-  // Build StdTx for broadcast
-  const stdTx = {
-    msg: aminoMsgs,
-    fee: signDoc.fee,
-    signatures: [
-      {
-        pub_key: signResult.signature.pub_key,
-        signature: signResult.signature.signature,
-      },
-    ],
-    memo: memo,
-  };
+  // Sign with Keplr (signAmino - confirmed working)
+  const signResult = await keplr.signAmino(
+    NETWORK.cosmosChainId,
+    address,
+    signDoc
+  );
 
   // Encode to base64
-  const txBytes = btoa(JSON.stringify(stdTx));
+  const txBase64 = encodeAminoStdTx(signDoc, signResult.signature);
 
-  // Broadcast via RPC proxy
-  const res = await fetch(`/api/rpc/broadcast_tx_sync`, {
+  // Broadcast via REST API (same method as qied CLI)
+  const res = await fetch(`/api/rest/cosmos/tx/v1beta1/txs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "broadcast_tx_sync",
-      params: { tx: txBytes },
+      tx_bytes: txBase64,
+      mode: "BROADCAST_MODE_SYNC",
     }),
   });
   const data = await res.json();
 
-  if (data?.result?.code !== 0) {
-    throw new Error(data?.result?.log || "Transaction failed");
+  // Check for errors
+  if (data?.tx_response?.code !== undefined && data.tx_response.code !== 0) {
+    throw new Error(data.tx_response.raw_log || "Transaction failed");
   }
 
   return {
-    code: 0,
-    transactionHash: data?.result?.hash || "",
-    gasUsed: Number(data?.result?.gas_used || 0),
-    gasWanted: Number(data?.result?.gas_wanted || 0),
-    height: Number(data?.result?.height || 0),
-    rawLog: data?.result?.log || "",
+    code: data?.tx_response?.code ?? 0,
+    transactionHash: data?.tx_response?.txhash || "",
+    gasUsed: Number(data?.tx_response?.gas_used || 0),
+    gasWanted: Number(data?.tx_response?.gas_wanted || 0),
+    height: Number(data?.tx_response?.height || 0),
+    rawLog: data?.tx_response?.raw_log || "",
   };
 }
 
@@ -116,7 +129,10 @@ async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: s
  * Delegate QIE tokens to a validator
  * Requires: Keplr wallet connected
  */
-export async function delegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
+export async function delegate(
+  validator: string,
+  qieAmount: string
+): Promise<DeliverTxResponse> {
   return signAndBroadcast(
     [
       {
@@ -136,7 +152,10 @@ export async function delegate(validator: string, qieAmount: string): Promise<De
  * Undelegate QIE tokens from a validator
  * Requires: Keplr wallet connected
  */
-export async function undelegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
+export async function undelegate(
+  validator: string,
+  qieAmount: string
+): Promise<DeliverTxResponse> {
   return signAndBroadcast(
     [
       {
@@ -156,7 +175,11 @@ export async function undelegate(validator: string, qieAmount: string): Promise<
  * Redelegate QIE tokens from one validator to another
  * Requires: Keplr wallet connected
  */
-export async function redelegate(srcValidator: string, dstValidator: string, qieAmount: string): Promise<DeliverTxResponse> {
+export async function redelegate(
+  srcValidator: string,
+  dstValidator: string,
+  qieAmount: string
+): Promise<DeliverTxResponse> {
   return signAndBroadcast(
     [
       {
@@ -177,7 +200,9 @@ export async function redelegate(srcValidator: string, dstValidator: string, qie
  * Withdraw all staking rewards
  * Requires: Keplr wallet connected
  */
-export async function withdrawAllRewards(validators: string[]): Promise<DeliverTxResponse> {
+export async function withdrawAllRewards(
+  validators: string[]
+): Promise<DeliverTxResponse> {
   const msgs = validators.map((v) => ({
     typeUrl: "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
     value: { delegator_address: "", validator_address: v },
@@ -190,7 +215,10 @@ export async function withdrawAllRewards(validators: string[]): Promise<DeliverT
  * Requires: Keplr wallet connected
  * @param option 1=YES, 2=ABSTAIN, 3=NO, 4=NO_WITH_VETO
  */
-export async function voteProposal(proposalId: string | number, option: 1 | 2 | 3 | 4): Promise<DeliverTxResponse> {
+export async function voteProposal(
+  proposalId: string | number,
+  option: 1 | 2 | 3 | 4
+): Promise<DeliverTxResponse> {
   return signAndBroadcast(
     [
       {
