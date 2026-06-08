@@ -42,9 +42,17 @@ async function handleApiRpc(request: Request): Promise<Response> {
   const targetUrl = `https://rpc.qie.onenov.xyz${path}${url.search}`;
 
   try {
-    const response = await fetch(targetUrl, {
+    // Forward method + body untuk POST requests
+    const fetchOptions: RequestInit = {
+      method: request.method,
       headers: { "Content-Type": "application/json" },
-    });
+    };
+    
+    if (request.method === "POST") {
+      fetchOptions.body = await request.text();
+    }
+
+    const response = await fetch(targetUrl, fetchOptions);
     const data = await response.json();
     return new Response(JSON.stringify(data), {
       status: response.status,
@@ -105,7 +113,7 @@ async function handleApiEvm(request: Request): Promise<Response> {
 async function handleApiAI(request: Request): Promise<Response> {
   try {
     const body = await request.json();
-    const apiKey = process.env.AI_API_KEY; // ganti nama variable
+    const apiKey = process.env.AI_API_KEY;
 
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "AI not configured" }), {
