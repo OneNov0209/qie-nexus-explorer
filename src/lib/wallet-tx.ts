@@ -1,21 +1,10 @@
 /**
  * Cosmos transaction helpers for QIE (Ethermint-based: coinType 60, eth_secp256k1).
  *
- * Uses Keplr's signDirect + RPC broadcast_tx_sync via proxy.
- * Proto encoding for proper TxRaw format.
+ * Uses Keplr's signAmino + RPC broadcast_tx_sync via proxy.
+ * signAmino is the confirmed working method for QIE chain.
  */
 import { NETWORK } from "@/data/network";
-import { TxRaw } from "cosmjs-types/cosmos/tx/v1beta1/tx";
-import { TxBody } from "cosmjs-types/cosmos/tx/v1beta1/tx";
-import { AuthInfo } from "cosmjs-types/cosmos/tx/v1beta1/tx";
-import { SignMode } from "cosmjs-types/cosmos/tx/signing/v1beta1/signing";
-import { PubKey } from "cosmjs-types/cosmos/crypto/secp256k1/keys";
-import { Any } from "cosmjs-types/google/protobuf/any";
-import { MsgDelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
-import { MsgUndelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
-import { MsgBeginRedelegate } from "cosmjs-types/cosmos/staking/v1beta1/tx";
-import { MsgWithdrawDelegatorReward } from "cosmjs-types/cosmos/distribution/v1beta1/tx";
-import { MsgVote } from "cosmjs-types/cosmos/gov/v1beta1/tx";
 
 type DeliverTxResponse = {
   code: number;
@@ -36,49 +25,12 @@ export function toMicro(qie: string | number): string {
   return (BigInt(Math.floor(n * 1e6)) * BigInt(1e12)).toString();
 }
 
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  bytes.forEach(b => binary += String.fromCharCode(b));
-  return btoa(binary);
-}
-
-function fromBase64(b64: string): Uint8Array {
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-}
-
 async function getKeplr() {
   const w = window as any;
   const keplr = w.keplr;
   if (!keplr) throw new Error("Keplr not detected. Please install Keplr for staking.");
   await keplr.enable(NETWORK.cosmosChainId);
   return keplr;
-}
-
-function encodeMsg(typeUrl: string, msg: any): Any {
-  let encoded: Uint8Array;
-  switch (typeUrl) {
-    case "/cosmos.staking.v1beta1.MsgDelegate":
-      encoded = MsgDelegate.encode(MsgDelegate.fromPartial(msg)).finish();
-      break;
-    case "/cosmos.staking.v1beta1.MsgUndelegate":
-      encoded = MsgUndelegate.encode(MsgUndelegate.fromPartial(msg)).finish();
-      break;
-    case "/cosmos.staking.v1beta1.MsgBeginRedelegate":
-      encoded = MsgBeginRedelegate.encode(MsgBeginRedelegate.fromPartial(msg)).finish();
-      break;
-    case "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward":
-      encoded = MsgWithdrawDelegatorReward.encode(MsgWithdrawDelegatorReward.fromPartial(msg)).finish();
-      break;
-    case "/cosmos.gov.v1beta1.MsgVote":
-      encoded = MsgVote.encode(MsgVote.fromPartial(msg)).finish();
-      break;
-    default:
-      throw new Error("Unknown message type: " + typeUrl);
-  }
-  return Any.fromPartial({
-    typeUrl: typeUrl,
-    value: encoded,
-  });
 }
 
 async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: string): Promise<DeliverTxResponse> {
@@ -89,61 +41,51 @@ async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: s
   // Fetch account info
   const accRes = await fetch(`/api/rest/cosmos/auth/v1beta1/accounts/${address}`).then(r => r.json());
   const baseAccount = accRes?.account?.base_account || accRes?.account;
-  const accountNumber = Number(baseAccount?.account_number || 0);
-  const sequence = Number(baseAccount?.sequence || 0);
+  const accountNumber = String(baseAccount?.account_number || 0);
+  const sequence = String(baseAccount?.sequence || 0);
 
-  // Encode messages to Any[]
-  const anyMsgs = msgs.map(m => encodeMsg(m.typeUrl, m.value));
+  // Build amino messages (Cosmos SDK format)
+  const aminoMsgs = msgs.map(m => ({
+    type: m.typeUrl
+      .replace("/cosmos.staking.v1beta1.", "cosmos-sdk/")
+      .replace("/cosmos.distribution.v1beta1.", "cosmos-sdk/")
+      .replace("/cosmos.gov.v1beta1.", "cosmos-sdk/"),
+    value: m.value,
+  }));
 
-  // Build TxBody
-  const txBody = TxBody.fromPartial({
-    messages: anyMsgs,
-    memo: memo,
-  });
-  const bodyBytes = TxBody.encode(txBody).finish();
-
-  // Build AuthInfo
-  const pubKeyValue = key.pubkey || new Uint8Array();
-  const authInfo = AuthInfo.fromPartial({
-    signerInfos: [{
-      publicKey: Any.fromPartial({
-        typeUrl: "/ethermint.crypto.v1.ethsecp256k1.PubKey",
-        value: PubKey.encode(PubKey.fromPartial({ key: pubKeyValue })).finish(),
-      }),
-      modeInfo: {
-        single: { mode: SignMode.SIGN_MODE_DIRECT },
-      },
-      sequence: BigInt(sequence),
-    }],
+  // Build sign doc
+  const signDoc = {
+    chain_id: NETWORK.cosmosChainId,
+    account_number: accountNumber,
+    sequence: sequence,
     fee: {
       amount: [{ denom: NETWORK.denom, amount: "6250000000000000" }],
-      gasLimit: BigInt(250000),
+      gas: "250000",
     },
-  });
-  const authInfoBytes = AuthInfo.encode(authInfo).finish();
-
-  // SignDoc
-  const signDoc = {
-    chainId: NETWORK.cosmosChainId,
-    accountNumber: String(accountNumber),
-    authInfoBytes: authInfoBytes,
-    bodyBytes: bodyBytes,
+    msgs: aminoMsgs,
+    memo: memo,
   };
 
-  // Sign with Keplr
-  const signResult = await keplr.signDirect(NETWORK.cosmosChainId, address, signDoc);
+  // Sign with Keplr (signAmino - confirmed working for QIE)
+  const signResult = await keplr.signAmino(NETWORK.cosmosChainId, address, signDoc);
 
-  // Build TxRaw
-  const txRaw = TxRaw.fromPartial({
-    bodyBytes: signResult.signed.bodyBytes,
-    authInfoBytes: signResult.signed.authInfoBytes,
-    signatures: [fromBase64(signResult.signature.signature)],
-  });
+  // Build StdTx for broadcast
+  const stdTx = {
+    msg: aminoMsgs,
+    fee: signDoc.fee,
+    signatures: [
+      {
+        pub_key: signResult.signature.pub_key,
+        signature: signResult.signature.signature,
+      },
+    ],
+    memo: memo,
+  };
 
-  const txBytes = TxRaw.encode(txRaw).finish();
-  const txBase64 = toBase64(txBytes);
+  // Encode to base64
+  const txBytes = btoa(JSON.stringify(stdTx));
 
-  // Broadcast via RPC
+  // Broadcast via RPC proxy
   const res = await fetch(`/api/rpc/broadcast_tx_sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -151,7 +93,7 @@ async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: s
       jsonrpc: "2.0",
       id: 1,
       method: "broadcast_tx_sync",
-      params: { tx: txBase64 },
+      params: { tx: txBytes },
     }),
   });
   const data = await res.json();
@@ -170,51 +112,92 @@ async function signAndBroadcast(msgs: { typeUrl: string; value: any }[], memo: s
   };
 }
 
+/**
+ * Delegate QIE tokens to a validator
+ * Requires: Keplr wallet connected
+ */
 export async function delegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
-  return signAndBroadcast([{
-    typeUrl: "/cosmos.staking.v1beta1.MsgDelegate",
-    value: {
-      delegatorAddress: "",
-      validatorAddress: validator,
-      amount: coin(toMicro(qieAmount)),
-    },
-  }], "Delegate via QIE Explorer");
+  return signAndBroadcast(
+    [
+      {
+        typeUrl: "/cosmos.staking.v1beta1.MsgDelegate",
+        value: {
+          delegator_address: "",
+          validator_address: validator,
+          amount: coin(toMicro(qieAmount)),
+        },
+      },
+    ],
+    "Delegate via QIE Explorer"
+  );
 }
 
+/**
+ * Undelegate QIE tokens from a validator
+ * Requires: Keplr wallet connected
+ */
 export async function undelegate(validator: string, qieAmount: string): Promise<DeliverTxResponse> {
-  return signAndBroadcast([{
-    typeUrl: "/cosmos.staking.v1beta1.MsgUndelegate",
-    value: {
-      delegatorAddress: "",
-      validatorAddress: validator,
-      amount: coin(toMicro(qieAmount)),
-    },
-  }], "Undelegate via QIE Explorer");
+  return signAndBroadcast(
+    [
+      {
+        typeUrl: "/cosmos.staking.v1beta1.MsgUndelegate",
+        value: {
+          delegator_address: "",
+          validator_address: validator,
+          amount: coin(toMicro(qieAmount)),
+        },
+      },
+    ],
+    "Undelegate via QIE Explorer"
+  );
 }
 
+/**
+ * Redelegate QIE tokens from one validator to another
+ * Requires: Keplr wallet connected
+ */
 export async function redelegate(srcValidator: string, dstValidator: string, qieAmount: string): Promise<DeliverTxResponse> {
-  return signAndBroadcast([{
-    typeUrl: "/cosmos.staking.v1beta1.MsgBeginRedelegate",
-    value: {
-      delegatorAddress: "",
-      validatorSrcAddress: srcValidator,
-      validatorDstAddress: dstValidator,
-      amount: coin(toMicro(qieAmount)),
-    },
-  }], "Redelegate via QIE Explorer");
+  return signAndBroadcast(
+    [
+      {
+        typeUrl: "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+        value: {
+          delegator_address: "",
+          validator_src_address: srcValidator,
+          validator_dst_address: dstValidator,
+          amount: coin(toMicro(qieAmount)),
+        },
+      },
+    ],
+    "Redelegate via QIE Explorer"
+  );
 }
 
+/**
+ * Withdraw all staking rewards
+ * Requires: Keplr wallet connected
+ */
 export async function withdrawAllRewards(validators: string[]): Promise<DeliverTxResponse> {
-  const msgs = validators.map(v => ({
+  const msgs = validators.map((v) => ({
     typeUrl: "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
-    value: { delegatorAddress: "", validatorAddress: v },
+    value: { delegator_address: "", validator_address: v },
   }));
   return signAndBroadcast(msgs, "Claim rewards via QIE Explorer");
 }
 
+/**
+ * Vote on a governance proposal
+ * Requires: Keplr wallet connected
+ * @param option 1=YES, 2=ABSTAIN, 3=NO, 4=NO_WITH_VETO
+ */
 export async function voteProposal(proposalId: string | number, option: 1 | 2 | 3 | 4): Promise<DeliverTxResponse> {
-  return signAndBroadcast([{
-    typeUrl: "/cosmos.gov.v1beta1.MsgVote",
-    value: { proposalId: BigInt(proposalId), voter: "", option },
-  }], "Vote via QIE Explorer");
+  return signAndBroadcast(
+    [
+      {
+        typeUrl: "/cosmos.gov.v1beta1.MsgVote",
+        value: { proposal_id: String(proposalId), voter: "", option },
+      },
+    ],
+    "Vote via QIE Explorer"
+  );
 }
