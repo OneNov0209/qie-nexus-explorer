@@ -35,19 +35,17 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
-// --- API Proxy handlers ---
 async function handleApiRpc(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace("/api/rpc", "");
   const targetUrl = `https://rpc.qie.onenov.xyz${path}${url.search}`;
 
   try {
-    // Forward method + body untuk POST requests
     const fetchOptions: RequestInit = {
       method: request.method,
       headers: { "Content-Type": "application/json" },
     };
-    
+
     if (request.method === "POST") {
       fetchOptions.body = await request.text();
     }
@@ -109,7 +107,6 @@ async function handleApiEvm(request: Request): Promise<Response> {
   }
 }
 
-// --- AI Proxy (Gemini) with retry ---
 async function handleApiAI(request: Request): Promise<Response> {
   try {
     const body = await request.json();
@@ -156,7 +153,28 @@ export default {
     try {
       const url = new URL(request.url);
 
-      // API Proxy routes
+      // Dedicated broadcast endpoint
+      if (url.pathname === "/api/broadcast") {
+        try {
+          const body = await request.text();
+          const response = await fetch("https://rpc.qie.onenov.xyz/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+          });
+          const data = await response.json();
+          return new Response(JSON.stringify(data), {
+            status: response.status,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: "Broadcast failed" }), {
+            status: 502,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+      }
+
       if (url.pathname.startsWith("/api/ai")) {
         return handleApiAI(request);
       }
@@ -170,7 +188,6 @@ export default {
         return handleApiEvm(request);
       }
 
-      // Normal SSR handler
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
