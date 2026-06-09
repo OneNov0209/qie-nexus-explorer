@@ -41,5 +41,5 @@ export const FOOTER_LINKS = {
     { label: "Prizes", href: "https://hackathon.qie.digital/#prizes" },
     { label: "FAQ", href: "https://hackathon.qie.digital/#faq" },
   ],
-  email: "hello@qie.digital",
+  email: "Info@qie.digital",
 };
