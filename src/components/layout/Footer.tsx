@@ -4,8 +4,8 @@ import { Mail } from "lucide-react";
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-border/60 bg-background/40 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-5 gap-8">
-        <div className="col-span-2 md:col-span-1">
+      <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
+        <div className="col-span-2 md:col-span-1 lg:col-span-1">
           <div className="flex items-center gap-3">
             <img src={NETWORK.logo} className="w-10 h-10 rounded-full ring-1 ring-primary/40" alt="" />
             <div>
@@ -21,9 +21,10 @@ export function Footer() {
           </a>
         </div>
         <FCol title="Products" items={FOOTER_LINKS.products} />
+        <FCol title="Ecosystem" items={FOOTER_LINKS.ecosystem} />
         <FCol title="Developers" items={FOOTER_LINKS.developers} />
         <FCol title="Community" items={FOOTER_LINKS.community} />
-        <FCol title="Hackathon" items={FOOTER_LINKS.hackathon} />
+        <FCol title="Company" items={FOOTER_LINKS.company} />
       </div>
       <div className="border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
         © {new Date().getFullYear()} QIE Blockchain. All rights reserved.
@@ -33,6 +34,7 @@ export function Footer() {
 }
 
 function FCol({ title, items }: { title: string; items: { label: string; href: string }[] }) {
+  if (!items || items.length === 0) return null;
   return (
     <div>
       <div className="text-sm font-semibold mb-3">{title}</div>
