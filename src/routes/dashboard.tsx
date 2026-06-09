@@ -200,27 +200,27 @@ function DashboardPage() {
               <span>L: ${data?.low24h?.toFixed(6) || "—"}</span>
             </div>
           </div>
-          <div className="h-48 px-2 pb-2">
-            {priceChart.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={priceChart} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="priceGrad24" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.5} />
-                      <stop offset="100%" stopColor="#F59E0B" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
-                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={50} />
-                  <Tooltip content={<CustomTooltip />} formatter={(v: any) => `$${Number(v).toFixed(6)}`} />
-                  <Area type="monotone" dataKey="price" name="Price" stroke="#F59E0B" strokeWidth={2} fill="url(#priceGrad24)" dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Loading price chart...</div>
-            )}
-          </div>
+          <div className="h-56 px-2 pb-2">
+  {priceChart.length > 0 ? (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={priceChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id="priceGrad24" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.5} />
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
+        <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} domain={['dataMin - 0.001', 'dataMax + 0.001']} width={55} tickFormatter={(v) => `$${v.toFixed(4)}`} />
+        <Tooltip content={<CustomTooltip />} formatter={(v: any) => `$${Number(v).toFixed(6)}`} />
+        <Area type="monotone" dataKey="price" name="Price" stroke="#F59E0B" strokeWidth={2} fill="url(#priceGrad24)" dot={false} />
+      </AreaChart>
+    </ResponsiveContainer>
+  ) : (
+    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Loading price chart...</div>
+  )}
+</div>
         </Card>
 
         {/* Block Activity Chart */}
