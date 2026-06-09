@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cosmos, evm, evmRpc, formatQIE, hexToNum, shorten } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { StatCard, Card, SectionTitle, Loading, Pill } from "@/components/ui/primitives";
-import { Activity, Boxes, Coins, Users, Layers, Percent, Clock, Zap, Sparkles, ChevronRight, ArrowRightLeft, Cpu, GitCommit, Package, Box } from "lucide-react";
+import { Activity, Boxes, Coins, Users, Layers, Percent, Clock, Zap, Sparkles, ChevronRight, ArrowRightLeft, Cpu, GitCommit, Package, Box, TrendingUp, Flame } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import dayjs from "dayjs";
 import { motion } from "framer-motion";
@@ -21,15 +21,26 @@ function useStats() {
     queryKey: ["dashboard-stats"],
     refetchInterval: 10_000,
     queryFn: async () => {
-      const [status, vals, pool, supply, commPool, evmBlock] = await Promise.all([
+      const [status, vals, pool, supply, commPool, evmBlock, priceData] = await Promise.all([
         cosmos.status().catch(() => null),
         cosmos.validators().catch(() => null),
         cosmos.stakingPool().catch(() => null),
         cosmos.supply().catch(() => null),
         cosmos.communityPool().catch(() => null),
         evmRpc<string>("eth_blockNumber").catch(() => "0x0"),
+        fetch("https://api.coingecko.com/api/v3/coins/qie?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false")
+          .then(r => r.json()).catch(() => null),
       ]);
-      return { status, vals, pool, supply, commPool, evmBlock };
+      return {
+        status, vals, pool, supply, commPool, evmBlock,
+        volume24h: priceData?.market_data?.total_volume?.usd || 0,
+        marketCap: priceData?.market_data?.market_cap?.usd || 0,
+        priceChange24h: priceData?.market_data?.price_change_percentage_24h || 0,
+        circulatingSupply: priceData?.market_data?.circulating_supply || 0,
+        totalSupplyCoinGecko: priceData?.market_data?.total_supply || 0,
+        ath: priceData?.market_data?.ath?.usd || 0,
+        athChange: priceData?.market_data?.ath_change_percentage?.usd || 0,
+      };
     },
   });
 }
@@ -58,11 +69,8 @@ function useAppVersion() {
     queryFn: async () => {
       try {
         const nodeInfo = await fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/node_info`)
-          .then(r => r.json())
-          .catch(() => null);
-        
+          .then(r => r.json()).catch(() => null);
         const appVersion = nodeInfo?.application_version;
-        
         if (appVersion) {
           return {
             name: appVersion.name || "—",
@@ -75,7 +83,6 @@ function useAppVersion() {
             cosmosSdkVersion: appVersion.cosmos_sdk_version || "—",
           };
         }
-        
         const status = await cosmos.status().catch(() => null);
         if (status) {
           return {
@@ -89,11 +96,8 @@ function useAppVersion() {
             cosmosSdkVersion: status.node_info?.cosmos_sdk_version || "—",
           };
         }
-        
         return null;
-      } catch {
-        return null;
-      }
+      } catch { return null; }
     },
   });
 }
@@ -224,13 +228,13 @@ function DashboardPage() {
           <StatCard label="Bonded" value={formatQIE(bonded, 0)} sub={`${stakingRatio.toFixed(2)}% staked`} icon={<Layers className="w-4 h-4 text-emerald-500" />} />
           <StatCard label="Block Time" value={avgBlockTime ? `${avgBlockTime.toFixed(2)}s` : "—"} icon={<Clock className="w-4 h-4 text-cyan-500" />} />
           <StatCard label="Staking Ratio" value={`${stakingRatio.toFixed(2)}%`} icon={<Percent className="w-4 h-4 text-pink-500" />} />
-          <StatCard label="Network" value="Healthy" sub="Producing blocks" icon={<Activity className="w-4 h-4 text-emerald-500" />} />
+          <StatCard label="24h Volume" value={data?.volume24h ? `$${(data.volume24h / 1e6).toFixed(2)}M` : "—"} icon={<TrendingUp className="w-4 h-4 text-cyan-400" />} />
+          <StatCard label="Inflation" value="Cosmos Model" sub="No halving" icon={<Percent className="w-4 h-4 text-pink-400" />} />
         </div>
       )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Block Activity Chart */}
         <Card className="lg:col-span-2">
           <SectionTitle title="Block Activity" sub="Transactions per block (last 20)" />
           <div className="h-64 px-2 pb-4">
@@ -248,19 +252,7 @@ function DashboardPage() {
                   <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="txs"
-                    name="Transactions"
-                    stroke="#8B5CF6"
-                    strokeWidth={2.5}
-                    fill="url(#txGrad)"
-                    dot={false}
-                    activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff", fill: "#8B5CF6" }}
-                    isAnimationActive={true}
-                    animationDuration={800}
-                    animationEasing="ease-out"
-                  />
+                  <Area type="monotone" dataKey="txs" name="Transactions" stroke="#8B5CF6" strokeWidth={2.5} fill="url(#txGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff", fill: "#8B5CF6" }} isAnimationActive={true} animationDuration={800} animationEasing="ease-out" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -269,7 +261,6 @@ function DashboardPage() {
           </div>
         </Card>
 
-        {/* Network Pulse Pie Charts */}
         <Card>
           <SectionTitle title="Network Pulse" sub="Distribution overview" />
           <div className="space-y-4">
@@ -278,62 +269,29 @@ function DashboardPage() {
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%" cy="50%"
-                      innerRadius={35} outerRadius={55}
-                      paddingAngle={3}
-                      dataKey="value"
-                      strokeWidth={0}
-                      isAnimationActive={true}
-                      animationDuration={600}
-                    >
-                      {pieData.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i]} />
-                      ))}
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} dataKey="value" strokeWidth={0} isAnimationActive={true} animationDuration={600}>
+                      {pieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i]} />))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap gap-3 justify-center mt-1">
-                {pieData.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: PIE_COLORS[i] }} />
-                    <span className="text-[11px] text-muted-foreground">{d.name}</span>
-                  </div>
-                ))}
+                {pieData.map((d, i) => (<div key={d.name} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: PIE_COLORS[i] }} /><span className="text-[11px] text-muted-foreground">{d.name}</span></div>))}
               </div>
             </div>
-
             <div>
               <p className="text-xs text-muted-foreground mb-1 px-1">Validators</p>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={validatorPie}
-                      cx="50%" cy="50%"
-                      innerRadius={35} outerRadius={55}
-                      paddingAngle={3}
-                      dataKey="value"
-                      strokeWidth={0}
-                      isAnimationActive={true}
-                      animationDuration={600}
-                    >
-                      {validatorPie.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i + 2]} />
-                      ))}
+                    <Pie data={validatorPie} cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} dataKey="value" strokeWidth={0} isAnimationActive={true} animationDuration={600}>
+                      {validatorPie.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i + 2]} />))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap gap-3 justify-center mt-1">
-                {validatorPie.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: PIE_COLORS[i + 2] }} />
-                    <span className="text-[11px] text-muted-foreground">{d.name} ({d.value})</span>
-                  </div>
-                ))}
+                {validatorPie.map((d, i) => (<div key={d.name} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: PIE_COLORS[i + 2] }} /><span className="text-[11px] text-muted-foreground">{d.name} ({d.value})</span></div>))}
               </div>
             </div>
           </div>
@@ -342,74 +300,36 @@ function DashboardPage() {
 
       {/* Latest Blocks + Recent Transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Latest Blocks */}
         <Card>
-          <SectionTitle 
-            title="Latest Blocks" 
-            action={
-              <Link to="/blocks" className="text-xs text-primary hover:underline flex items-center gap-1">
-                View all <ChevronRight className="w-3 h-3" />
-              </Link>
-            } 
-          />
+          <SectionTitle title="Latest Blocks" action={<Link to="/blocks" className="text-xs text-primary hover:underline flex items-center gap-1">View all <ChevronRight className="w-3 h-3" /></Link>} />
           <div className="divide-y divide-border/50">
             {blocks.slice(0, 8).map((b: any) => {
               const h = hexToNum(b.number);
               return (
-                <Link
-                  key={b.hash}
-                  to="/blocks/$height"
-                  params={{ height: String(h) }}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors group"
-                >
+                <Link key={b.hash} to="/blocks/$height" params={{ height: String(h) }} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors group">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-mono font-medium tabular-nums group-hover:text-violet-500 transition-colors">
-                      {h.toLocaleString()}
-                    </span>
-                    <span className="text-xs text-muted-foreground/50 font-mono">
-                      {dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss")}
-                    </span>
+                    <span className="text-sm font-mono font-medium tabular-nums group-hover:text-violet-500 transition-colors">{h.toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground/50 font-mono">{dayjs(hexToNum(b.timestamp) * 1000).format("HH:mm:ss")}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {b.transactions?.length ?? 0} txs
-                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{b.transactions?.length ?? 0} txs</span>
                 </Link>
               );
             })}
-            {blocks.length === 0 && (
-              <div className="text-sm text-muted-foreground p-6 text-center">Waiting for blocks...</div>
-            )}
+            {blocks.length === 0 && <div className="text-sm text-muted-foreground p-6 text-center">Waiting for blocks...</div>}
           </div>
         </Card>
 
-        {/* Recent Transactions */}
         <Card>
-          <SectionTitle 
-            title="Recent Transactions" 
-            action={
-              <Link to="/transactions" className="text-xs text-primary hover:underline flex items-center gap-1">
-                View all <ChevronRight className="w-3 h-3" />
-              </Link>
-            } 
-          />
+          <SectionTitle title="Recent Transactions" action={<Link to="/transactions" className="text-xs text-primary hover:underline flex items-center gap-1">View all <ChevronRight className="w-3 h-3" /></Link>} />
           <div className="divide-y divide-border/50">
             {recentTxs.length > 0 ? (
               recentTxs.map((tx: any, i: number) => (
-                <Link
-                  key={`${tx.hash}-${i}`}
-                  to="/tx/$hash"
-                  params={{ hash: String(tx.hash) }}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors group"
-                >
+                <Link key={`${tx.hash}-${i}`} to="/tx/$hash" params={{ hash: String(tx.hash) }} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors group">
                   <div className="flex items-center gap-3 min-w-0">
                     <ArrowRightLeft className="w-4 h-4 text-cyan-400 shrink-0" />
                     <div className="min-w-0">
-                      <div className="text-xs font-mono text-muted-foreground truncate group-hover:text-cyan-400 transition-colors">
-                        {shorten(String(tx.hash), 8, 6)}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground/50">
-                        Block #{tx.block.toLocaleString()} · {dayjs(tx.time).format("HH:mm:ss")}
-                      </div>
+                      <div className="text-xs font-mono text-muted-foreground truncate group-hover:text-cyan-400 transition-colors">{shorten(String(tx.hash), 8, 6)}</div>
+                      <div className="text-[11px] text-muted-foreground/50">Block #{tx.block.toLocaleString()} · {dayjs(tx.time).format("HH:mm:ss")}</div>
                     </div>
                   </div>
                 </Link>
@@ -421,12 +341,11 @@ function DashboardPage() {
         </Card>
       </div>
 
-      {/* Application Versions - PALING BAWAH */}
+      {/* Application Versions */}
       {appVersion.data && (
         <Card>
           <SectionTitle title="Application Versions" sub="Node software information" icon={<Package className="w-5 h-5 text-violet-400" />} />
           <div className="space-y-3 mt-2">
-            {/* Main info rows */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               <VersionRow icon={<Box className="w-3.5 h-3.5 text-emerald-400" />} label="App Name" value={appVersion.data.appName} />
               <VersionRow icon={<Cpu className="w-3.5 h-3.5 text-blue-400" />} label="Name" value={appVersion.data.name} />
@@ -438,8 +357,6 @@ function DashboardPage() {
                 <VersionRow icon={<Sparkles className="w-3.5 h-3.5 text-rose-400" />} label="Build Tags" value={appVersion.data.buildTags} />
               )}
             </div>
-
-            {/* Build Deps - Scrollable */}
             {appVersion.data.buildDeps && appVersion.data.buildDeps.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
@@ -470,10 +387,7 @@ function DashboardPage() {
 function VersionRow({ icon, label, value, mono }: { icon: React.ReactNode; label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-      </div>
+      <div className="flex items-center gap-2">{icon}<span className="text-[11px] text-muted-foreground">{label}</span></div>
       <span className={`text-xs font-medium ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
