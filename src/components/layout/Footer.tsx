@@ -2,6 +2,12 @@ import { FOOTER_LINKS, NETWORK } from "@/data/network";
 import { Mail } from "lucide-react";
 
 export function Footer() {
+  const products = FOOTER_LINKS?.products || [];
+  const ecosystem = (FOOTER_LINKS as any)?.ecosystem || [];
+  const developers = FOOTER_LINKS?.developers || [];
+  const community = FOOTER_LINKS?.community || [];
+  const company = (FOOTER_LINKS as any)?.company || [];
+
   return (
     <footer className="mt-16 border-t border-border/60 bg-background/40 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
@@ -16,15 +22,15 @@ export function Footer() {
           <p className="text-xs text-muted-foreground mt-4 leading-relaxed">
             Hybrid Cosmos + EVM block explorer for the QIE ecosystem.
           </p>
-          <a href={`mailto:${FOOTER_LINKS.email}`} className="mt-4 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
-            <Mail className="w-3.5 h-3.5" /> {FOOTER_LINKS.email}
+          <a href={`mailto:${FOOTER_LINKS.email || ""}`} className="mt-4 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
+            <Mail className="w-3.5 h-3.5" /> {FOOTER_LINKS.email || ""}
           </a>
         </div>
-        <FCol title="Products" items={FOOTER_LINKS.products} />
-        <FCol title="Ecosystem" items={"ecosystem" in FOOTER_LINKS ? (FOOTER_LINKS as any).ecosystem : []} />
-        <FCol title="Developers" items={FOOTER_LINKS.developers} />
-        <FCol title="Community" items={FOOTER_LINKS.community} />
-        <FCol title="Company" items={"company" in FOOTER_LINKS ? (FOOTER_LINKS as any).company : []} />
+        {products.length > 0 && <FCol title="Products" items={products} />}
+        {ecosystem.length > 0 && <FCol title="Ecosystem" items={ecosystem} />}
+        {developers.length > 0 && <FCol title="Developers" items={developers} />}
+        {community.length > 0 && <FCol title="Community" items={community} />}
+        {company.length > 0 && <FCol title="Company" items={company} />}
       </div>
       <div className="border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
         © {new Date().getFullYear()} QIE Blockchain. All rights reserved.
@@ -34,7 +40,6 @@ export function Footer() {
 }
 
 function FCol({ title, items }: { title: string; items: { label: string; href: string }[] }) {
-  if (!items || !Array.isArray(items) || items.length === 0) return null;
   return (
     <div>
       <div className="text-sm font-semibold mb-3">{title}</div>
