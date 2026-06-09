@@ -1,4 +1,4 @@
-src/routes/dashboard.tsx
+//src/routes/dashboard.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { cosmos, evm, evmRpc, formatQIE, hexToNum, shorten } from "@/lib/api";
