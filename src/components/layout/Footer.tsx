@@ -21,10 +21,10 @@ export function Footer() {
           </a>
         </div>
         <FCol title="Products" items={FOOTER_LINKS.products} />
-        <FCol title="Ecosystem" items={FOOTER_LINKS.ecosystem} />
+        <FCol title="Ecosystem" items={"ecosystem" in FOOTER_LINKS ? (FOOTER_LINKS as any).ecosystem : []} />
         <FCol title="Developers" items={FOOTER_LINKS.developers} />
         <FCol title="Community" items={FOOTER_LINKS.community} />
-        <FCol title="Company" items={FOOTER_LINKS.company} />
+        <FCol title="Company" items={"company" in FOOTER_LINKS ? (FOOTER_LINKS as any).company : []} />
       </div>
       <div className="border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
         © {new Date().getFullYear()} QIE Blockchain. All rights reserved.
@@ -34,7 +34,7 @@ export function Footer() {
 }
 
 function FCol({ title, items }: { title: string; items: { label: string; href: string }[] }) {
-  if (!items || items.length === 0) return null;
+  if (!items || !Array.isArray(items) || items.length === 0) return null;
   return (
     <div>
       <div className="text-sm font-semibold mb-3">{title}</div>
