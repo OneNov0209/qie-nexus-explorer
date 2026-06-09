@@ -64,4 +64,4 @@ export const FOOTER_LINKS = {
     { label: "Privacy Policy", href: "https://www.qie.digital/terms-of-services" },
   ],
   email: "info@qiewallet.me",
-} as const;
+}
