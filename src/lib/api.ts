@@ -1,7 +1,7 @@
 import axios from "axios";
 import { NETWORK } from "@/data/network";
 import { cached, ttlFor } from "./cache";
-import { bech32 } from "bech32";
+import * as bech32 from "bech32";
 
 const rpcAxios = axios.create({ baseURL: '/api/rpc', timeout: 15000 });
 const restAxios = axios.create({ baseURL: '/api/rest', timeout: 15000 });
