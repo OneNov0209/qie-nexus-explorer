@@ -1,6 +1,7 @@
 import axios from "axios";
 import { NETWORK } from "@/data/network";
 import { cached, ttlFor } from "./cache";
+import { bech32 } from "bech32";
 
 const rpcAxios = axios.create({ baseURL: '/api/rpc', timeout: 15000 });
 const restAxios = axios.create({ baseURL: '/api/rest', timeout: 15000 });
@@ -70,6 +71,18 @@ export const shorten = (s?: string, head = 8, tail = 6) => {
   if (s.length <= head + tail + 3) return s;
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 };
+
+export function consensusPubkeyToAddress(pubkey: string): string {
+  if (!pubkey) return "";
+  try {
+    const hex = Buffer.from(pubkey, 'base64').toString('hex');
+    const addressHex = hex.slice(-40);
+    const words = bech32.toWords(Buffer.from(addressHex, 'hex'));
+    return bech32.encode('qievalcons', words);
+  } catch {
+    return pubkey;
+  }
+}
 
 export const cosmos = {
   status: () => rpc.get("/status").then((r: any) => r.data?.result),
