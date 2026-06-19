@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos, formatQIE, consensusPubkeyToAddress } from "@/lib/api";
+import { cosmos, formatQIE } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
 import { useState, useMemo } from "react";
@@ -48,16 +48,18 @@ function UptimePage() {
         let info = null;
         
         if (consensusKey) {
-          const consensusAddress = consensusPubkeyToAddress(consensusKey);
-          info = signingInfos.find((s: any) => s.address === consensusAddress);
-          
-          if (!info) {
-            const hex = Buffer.from(consensusKey, 'base64').toString('hex');
-            const addressHex = hex.slice(-40);
-            info = signingInfos.find((s: any) => 
-              s.address?.toLowerCase().includes(addressHex.toLowerCase())
-            );
+          const hex = atob(consensusKey);
+          const bytes = new Uint8Array(hex.length);
+          for (let i = 0; i < hex.length; i++) {
+            bytes[i] = hex.charCodeAt(i);
           }
+          const addressHex = Array.from(bytes)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('')
+            .slice(-40);
+          info = signingInfos.find((s: any) => 
+            s.address?.toLowerCase().includes(addressHex.toLowerCase())
+          );
         }
         
         const isJailed = v.jailed || false;
