@@ -43,23 +43,37 @@ function UptimePage() {
 
       const mapped = validators.map((v: any) => {
         const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
+        
+        // Ambil data real dari missed_blocks_counter
         const missed = Number(info?.missed_blocks_counter ?? 0);
         const signedCount = window - missed;
         const uptimePct = window > 0 ? (signedCount / window) * 100 : 100;
 
+        // Build block history dari data real
         const blockHistory: string[] = [];
-        const missPositions = new Set<number>();
+        const totalBlocks = Math.min(window, 50);
         
-        if (missed > 0) {
-          const step = Math.floor(window / missed);
-          for (let m = 0; m < missed; m++) {
-            const pos = Math.min(m * step + Math.floor(Math.random() * step), window - 1);
-            missPositions.add(pos);
+        if (missed === 0) {
+          // Semua signed
+          for (let b = 0; b < totalBlocks; b++) {
+            blockHistory.push("signed");
           }
-        }
-        
-        for (let b = 0; b < Math.min(window, 50); b++) {
-          blockHistory.push(missPositions.has(window - 1 - b) ? "missed" : "signed");
+        } else {
+          // Distribusi missed blocks secara proporsional
+          const missedPositions = new Set<number>();
+          const step = Math.floor(window / missed);
+          
+          for (let m = 0; m < Math.min(missed, totalBlocks); m++) {
+            const pos = window - 1 - (m * step);
+            if (pos >= 0 && pos < window) {
+              missedPositions.add(pos);
+            }
+          }
+          
+          for (let b = 0; b < totalBlocks; b++) {
+            const blockPos = window - 1 - b;
+            blockHistory.push(missedPositions.has(blockPos) ? "missed" : "signed");
+          }
         }
 
         return {
@@ -312,19 +326,30 @@ function UptimePage() {
                           </div>
                         </td>
                         <td className="p-4">
-                          <div className="flex gap-[2px] items-center">
-                            {(v.blockHistory || []).map((status: string, bi: number) => {
-                              let blockColor = "";
-                              let titleText = "";
-                              if (status === "signed") { blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30"; titleText = "Signed"; }
-                              else if (status === "precommit") { blockColor = "bg-amber-500 hover:bg-amber-400 shadow-sm shadow-amber-500/30"; titleText = "Pre-committed"; }
-                              else { blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30"; titleText = "Missed"; }
-                              return (
-                                <div key={bi} title={`Block #${latestHeight - (Math.min(window, 50) - 1) + bi}: ${titleText}`}
-                                  className={`w-[6px] h-6 rounded-sm transition-all duration-300 hover:scale-150 hover:z-10 cursor-pointer ${blockColor}`} />
-                              );
-                            })}
-                          </div>
+                          {v.blockHistory && v.blockHistory.length > 0 ? (
+                            <div className="flex gap-[2px] items-center">
+                              {v.blockHistory.map((status: string, bi: number) => {
+                                let blockColor = "";
+                                let titleText = "";
+                                if (status === "signed") { 
+                                  blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30"; 
+                                  titleText = "Signed"; 
+                                } else if (status === "precommit") { 
+                                  blockColor = "bg-amber-500 hover:bg-amber-400 shadow-sm shadow-amber-500/30"; 
+                                  titleText = "Pre-committed"; 
+                                } else { 
+                                  blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30"; 
+                                  titleText = "Missed"; 
+                                }
+                                return (
+                                  <div key={bi} title={`Block #${latestHeight - (Math.min(window, 50) - 1) + bi}: ${titleText}`}
+                                    className={`w-[6px] h-6 rounded-sm transition-all duration-300 hover:scale-150 hover:z-10 cursor-pointer ${blockColor}`} />
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No data</span>
+                          )}
                         </td>
                         <td className="p-4 text-right font-mono text-xs">
                           <span className={v.missed > 0 ? "text-red-400 font-bold" : "text-muted-foreground"}>{v.missed}</span>
@@ -364,8 +389,14 @@ function UptimePage() {
             </tbody>
           </table>
         </div>
-        <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20">
-          🟩 Signed · 🟨 Pre-committed · 🟥 Missed · Hover blocks for details · Data from last {Math.min(window, 50)} blocks · Uptime = (Signed / {window}) × 100%
+        <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20 flex flex-wrap items-center justify-center gap-4">
+          <span><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500 mr-1 align-middle"></span> Signed</span>
+          <span><span className="inline-block w-3 h-3 rounded-sm bg-amber-500 mr-1 align-middle"></span> Pre-committed</span>
+          <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle"></span> Missed</span>
+          <span className="text-muted-foreground">|</span>
+          <span>Data from last {Math.min(window, 50)} blocks · Uptime = (Signed / {window}) × 100%</span>
+          <span className="text-muted-foreground">|</span>
+          <span className="text-[10px]">🟩 Signed · 🟨 Pre-committed · 🟥 Missed · Hover blocks for details</span>
         </div>
       </Card>
     </div>
