@@ -75,7 +75,14 @@ export const shorten = (s?: string, head = 8, tail = 6) => {
 export function consensusPubkeyToAddress(pubkey: string): string {
   if (!pubkey) return "";
   try {
-    const hex = Buffer.from(pubkey, 'base64').toString('hex');
+    const binaryString = atob(pubkey);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const hex = Array.from(bytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
     const addressHex = hex.slice(-40);
     const words = bech32.toWords(Buffer.from(addressHex, 'hex'));
     return bech32.encode('qievalcons', words);
