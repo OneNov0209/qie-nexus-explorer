@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos, formatQIE } from "@/lib/api";
+import { cosmos, formatQIE, consensusPubkeyToAddress } from "@/lib/api";
 import { NETWORK } from "@/data/network";
 import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
 import { useState, useMemo } from "react";
@@ -37,21 +37,36 @@ function UptimePage() {
         cosmos.block().catch(() => null),
       ]);
 
-      const window = Number(params?.signed_blocks_window ?? 100);
+      const windowSize = Number(params?.signed_blocks_window ?? 100);
       const validators = vals?.validators ?? [];
       const signingInfos = signing?.info ?? [];
       const latestHeight = Number(status?.sync_info?.latest_block_height ?? 0);
       const signatures = latestBlock?.block?.last_commit?.signatures || [];
 
       const mapped = validators.map((v: any) => {
-        const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
+        const consensusKey = v.consensus_pubkey?.key;
+        let info = null;
+        
+        if (consensusKey) {
+          const consensusAddress = consensusPubkeyToAddress(consensusKey);
+          info = signingInfos.find((s: any) => s.address === consensusAddress);
+          
+          if (!info) {
+            const hex = Buffer.from(consensusKey, 'base64').toString('hex');
+            const addressHex = hex.slice(-40);
+            info = signingInfos.find((s: any) => 
+              s.address?.toLowerCase().includes(addressHex.toLowerCase())
+            );
+          }
+        }
+        
         const isJailed = v.jailed || false;
         const missed = Number(info?.missed_blocks_counter ?? 0);
-        const signedCount = Math.max(0, window - missed);
-        const uptimePct = isJailed ? 0 : (window > 0 ? ((window - missed) / window) * 100 : 100);
+        const signedCount = Math.max(0, windowSize - missed);
+        const uptimePct = isJailed ? 0 : (windowSize > 0 ? ((windowSize - missed) / windowSize) * 100 : 100);
 
         const blockHistory: string[] = [];
-        const totalBlocks = Math.min(window, 50);
+        const totalBlocks = Math.min(windowSize, 50);
         
         if (isJailed) {
           for (let b = 0; b < totalBlocks; b++) {
@@ -62,20 +77,17 @@ function UptimePage() {
             blockHistory.push("signed");
           }
         } else {
-          const validatorAddress = v.consensus_pubkey?.key;
-          const sig = signatures.find((s: any) => s.validator_address === validatorAddress);
-          
-          if (sig) {
-            const flag = sig.block_id_flag;
-            if (flag === 'BLOCK_ID_FLAG_COMMIT') {
-              blockHistory.push("signed");
-            } else if (flag === 'BLOCK_ID_FLAG_PRECOMMIT') {
-              blockHistory.push("precommit");
-            } else {
-              blockHistory.push("missed");
+          const missedPositions = new Set<number>();
+          const step = Math.max(1, Math.floor(windowSize / missed));
+          for (let m = 0; m < Math.min(missed, totalBlocks); m++) {
+            const pos = windowSize - 1 - (m * step);
+            if (pos >= 0 && pos < windowSize) {
+              missedPositions.add(pos);
             }
-          } else {
-            blockHistory.push("missed");
+          }
+          for (let b = 0; b < totalBlocks; b++) {
+            const blockPos = windowSize - 1 - b;
+            blockHistory.push(missedPositions.has(blockPos) ? "missed" : "signed");
           }
         }
 
@@ -91,7 +103,7 @@ function UptimePage() {
           missed,
           signedCount,
           uptimePct,
-          window,
+          window: windowSize,
           blockHistory,
           indexOffset: info?.index_offset,
           startHeight: info?.start_height,
@@ -109,7 +121,7 @@ function UptimePage() {
       return {
         validators: activeValidators.map((v: any, i: number) => ({ ...v, rank: i + 1 })),
         allValidators: mapped,
-        window,
+        window: windowSize,
         latestHeight,
         total: activeValidators.length,
         jailedCount: mapped.filter((v: any) => v.jailed).length,
@@ -118,7 +130,7 @@ function UptimePage() {
   });
 
   const validators = data?.validators ?? [];
-  const window = data?.window ?? 100;
+  const windowSize = data?.window ?? 100;
   const latestHeight = data?.latestHeight ?? 0;
   const jailedCount = data?.jailedCount ?? 0;
 
@@ -197,7 +209,7 @@ function UptimePage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <SectionTitle
           title="Validator Uptime"
-          sub={`Signed blocks window: ${window.toLocaleString()} · ${jailedCount} validators jailed`}
+          sub={`Signed blocks window: ${windowSize.toLocaleString()} · ${jailedCount} validators jailed`}
           icon={<Shield className="w-5 h-5 text-violet-500" />}
         />
         <button
@@ -213,7 +225,7 @@ function UptimePage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Active Validators" value={validators.length} icon={<Activity className="w-4 h-4 text-violet-400" />} />
         <StatCard label="Jailed" value={jailedCount} icon={<AlertTriangle className="w-4 h-4 text-amber-400" />} />
-        <StatCard label="Block Window" value={window.toLocaleString()} icon={<BarChart3 className="w-4 h-4 text-cyan-400" />} />
+        <StatCard label="Block Window" value={windowSize.toLocaleString()} icon={<BarChart3 className="w-4 h-4 text-cyan-400" />} />
         <StatCard label="Avg Uptime" value={`${avgUptime}%`} icon={<Gauge className="w-4 h-4 text-emerald-400" />} />
         <StatCard label="Latest Height" value={`#${latestHeight.toLocaleString()}`} icon={<TrendingUp className="w-4 h-4 text-amber-400" />} />
       </div>
@@ -422,7 +434,7 @@ function UptimePage() {
           <span><span className="inline-block w-3 h-3 rounded-sm bg-yellow-500 mr-1 align-middle"></span> Precommitted</span>
           <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle"></span> Missed</span>
           <span className="text-muted-foreground">|</span>
-          <span>Data from last 50 blocks · Uptime = (Signed / {window}) × 100%</span>
+          <span>Data from last 50 blocks · Uptime = (Signed / {windowSize}) × 100%</span>
         </div>
       </Card>
     </div>
