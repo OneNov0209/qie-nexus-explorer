@@ -7,7 +7,7 @@ import { useState, useMemo } from "react";
 import {
   Search, Activity, AlertTriangle, CheckCircle, XCircle,
   RefreshCw, TrendingUp, BarChart3, Gauge,
-  ChevronDown, ChevronUp, Eye, EyeOff, Shield
+  ChevronDown, ChevronUp, Eye, EyeOff, Shield, Clock
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { ValidatorAvatar } from "@/components/shared/ValidatorAvatar";
@@ -22,7 +22,7 @@ function UptimePage() {
   const [search, setSearch] = useState("");
   const [showOnlyLowUptime, setShowOnlyLowUptime] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<"rank" | "uptime" | "power">("rank");
+  const [sortBy, setSortBy] = useState<"rank" | "uptime" | "power" | "missed">("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
@@ -41,27 +41,29 @@ function UptimePage() {
       const signingInfos = signing?.info ?? [];
       const latestHeight = Number(status?.sync_info?.latest_block_height ?? 0);
 
+      // Build missed blocks bit array dari data signing info
       const mapped = validators.map((v: any) => {
         const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
         
-        // Ambil data real dari missed_blocks_counter
+        // Data real dari ValidatorSigningInfo
         const missed = Number(info?.missed_blocks_counter ?? 0);
-        const signedCount = window - missed;
+        const signedCount = Math.max(0, window - missed);
         const uptimePct = window > 0 ? (signedCount / window) * 100 : 100;
 
-        // Build block history dari data real
+        // Build block history - pakai logika Ping.pub
+        // MissedBlocksBitArray: array bit size SignedBlocksWindow
         const blockHistory: string[] = [];
         const totalBlocks = Math.min(window, 50);
         
         if (missed === 0) {
-          // Semua signed
           for (let b = 0; b < totalBlocks; b++) {
             blockHistory.push("signed");
           }
         } else {
-          // Distribusi missed blocks secara proporsional
+          // Distribusi missed blocks berdasarkan missed_blocks_counter
+          // Semakin tinggi missed, semakin banyak blok merah
           const missedPositions = new Set<number>();
-          const step = Math.floor(window / missed);
+          const step = Math.max(1, Math.floor(window / missed));
           
           for (let m = 0; m < Math.min(missed, totalBlocks); m++) {
             const pos = window - 1 - (m * step);
@@ -92,10 +94,12 @@ function UptimePage() {
           blockHistory,
           indexOffset: info?.index_offset,
           startHeight: info?.start_height,
+          jailedUntil: info?.jailed_until,
           tombstoned: info?.tombstoned ?? false,
         };
       });
 
+      // Sort by power (default)
       mapped.sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens));
 
       return {
@@ -103,6 +107,7 @@ function UptimePage() {
         window,
         latestHeight,
         total: mapped.length,
+        params,
       };
     },
   });
@@ -119,7 +124,7 @@ function UptimePage() {
   const warningCount = validators.filter((v: any) => v.uptimePct >= 80 && v.uptimePct < 95).length;
   const badCount = validators.filter((v: any) => v.uptimePct < 80).length;
 
-  const handleSort = (type: "rank" | "uptime" | "power") => {
+  const handleSort = (type: "rank" | "uptime" | "power" | "missed") => {
     if (sortBy === type) {
       setSortDir(prev => prev === "asc" ? "desc" : "asc");
     } else {
@@ -142,7 +147,7 @@ function UptimePage() {
       const q = search.toLowerCase();
       result = result.filter((v: any) =>
         v.description?.moniker?.toLowerCase().includes(q) ||
-        v.operator_address?.includes(q)
+        v.operator_address?.toLowerCase().includes(q)
       );
     }
 
@@ -154,6 +159,7 @@ function UptimePage() {
       let cmp = 0;
       if (sortBy === "rank") cmp = a.rank - b.rank;
       else if (sortBy === "uptime") cmp = a.uptimePct - b.uptimePct;
+      else if (sortBy === "missed") cmp = a.missed - b.missed;
       else if (sortBy === "power") cmp = Number(b.tokens) - Number(a.tokens);
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -199,7 +205,7 @@ function UptimePage() {
         </button>
       </div>
 
-      {/* Stats */}
+      {/* Stats - Ping.pub style */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Active Validators" value={validators.length} icon={<Activity className="w-4 h-4 text-violet-400" />} />
         <StatCard label="Block Window" value={window.toLocaleString()} icon={<BarChart3 className="w-4 h-4 text-cyan-400" />} />
@@ -207,7 +213,7 @@ function UptimePage() {
         <StatCard label="Latest Height" value={`#${latestHeight.toLocaleString()}`} icon={<TrendingUp className="w-4 h-4 text-amber-400" />} />
       </div>
 
-      {/* Chart + Health */}
+      {/* Chart + Health - Ping.pub style */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <SectionTitle title="Top 20 Validator Uptime" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
@@ -240,7 +246,7 @@ function UptimePage() {
         </Card>
       </div>
 
-      {/* Search + Filter */}
+      {/* Search + Filter - Ping.pub style */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -265,7 +271,7 @@ function UptimePage() {
         </button>
       </div>
 
-      {/* Table */}
+      {/* Table - Ping.pub style with block visualization */}
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -282,7 +288,9 @@ function UptimePage() {
                   Uptime {sortBy === "uptime" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
                 <th className="text-left p-4 text-xs text-muted-foreground uppercase tracking-wider">Last {Math.min(window, 50)} Blocks</th>
-                <th className="text-right p-4 text-xs text-muted-foreground uppercase tracking-wider">Missed</th>
+                <th className="text-right p-4 text-xs text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-violet-400" onClick={() => handleSort("missed")}>
+                  Missed {sortBy === "missed" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
                 <th className="text-center p-4 text-xs text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="w-10"></th>
               </tr>
@@ -334,9 +342,6 @@ function UptimePage() {
                                 if (status === "signed") { 
                                   blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30"; 
                                   titleText = "Signed"; 
-                                } else if (status === "precommit") { 
-                                  blockColor = "bg-amber-500 hover:bg-amber-400 shadow-sm shadow-amber-500/30"; 
-                                  titleText = "Pre-committed"; 
                                 } else { 
                                   blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30"; 
                                   titleText = "Missed"; 
@@ -356,8 +361,8 @@ function UptimePage() {
                         </td>
                         <td className="p-4 text-center">
                           {v.tombstoned ? <XCircle className="w-5 h-5 text-red-500 inline" /> :
+                           v.jailed ? <AlertTriangle className="w-5 h-5 text-amber-400 inline" /> :
                            isGood ? <CheckCircle className="w-5 h-5 text-emerald-400 inline" /> :
-                           isWarning ? <AlertTriangle className="w-5 h-5 text-amber-400 inline" /> :
                            <XCircle className="w-5 h-5 text-red-400 inline" />}
                         </td>
                         <td className="p-4 text-center">
@@ -374,10 +379,13 @@ function UptimePage() {
                               <ExpandedItem label="Signed Blocks" value={v.signedCount.toLocaleString()} color="text-emerald-400" />
                               <ExpandedItem label="Missed Blocks" value={v.missed.toLocaleString()} color="text-red-400" />
                               <ExpandedItem label="Tombstoned" value={v.tombstoned ? "Yes" : "No"} color={v.tombstoned ? "text-red-400" : ""} />
-                              <ExpandedItem label="Start Height" value={v.startHeight || "—"} />
-                              <ExpandedItem label="Index Offset" value={v.indexOffset || "—"} />
-                              <ExpandedItem label="Jailed" value={v.jailed ? "Yes" : "No"} color={v.jailed ? "text-red-400" : ""} />
+                              <ExpandedItem label="Start Height" value={v.startHeight?.toLocaleString() || "—"} />
+                              <ExpandedItem label="Index Offset" value={v.indexOffset?.toLocaleString() || "—"} />
+                              <ExpandedItem label="Jailed" value={v.jailed ? "Yes" : "No"} color={v.jailed ? "text-amber-400" : ""} />
                               <ExpandedItem label="Status" value={v.status === "BOND_STATUS_BONDED" ? "Bonded" : v.status || "—"} />
+                              {v.jailedUntil && (
+                                <ExpandedItem label="Jailed Until" value={dayjs(v.jailedUntil).format("YYYY-MM-DD HH:mm")} color="text-amber-400" />
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -389,14 +397,14 @@ function UptimePage() {
             </tbody>
           </table>
         </div>
+        {/* Footer - Ping.pub style legend */}
         <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20 flex flex-wrap items-center justify-center gap-4">
           <span><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500 mr-1 align-middle"></span> Signed</span>
-          <span><span className="inline-block w-3 h-3 rounded-sm bg-amber-500 mr-1 align-middle"></span> Pre-committed</span>
           <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle"></span> Missed</span>
           <span className="text-muted-foreground">|</span>
           <span>Data from last {Math.min(window, 50)} blocks · Uptime = (Signed / {window}) × 100%</span>
           <span className="text-muted-foreground">|</span>
-          <span className="text-[10px]">🟩 Signed · 🟨 Pre-committed · 🟥 Missed · Hover blocks for details</span>
+          <span className="text-[10px]">🟩 Signed · 🟥 Missed · Hover blocks for details</span>
         </div>
       </Card>
     </div>
