@@ -41,17 +41,12 @@ function UptimePage() {
       const signingInfos = signing?.info ?? [];
       const latestHeight = Number(status?.sync_info?.latest_block_height ?? 0);
 
-      // Build missed blocks bit array dari data signing info
       const mapped = validators.map((v: any) => {
         const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
-        
-        // Data real dari ValidatorSigningInfo
+
         const missed = Number(info?.missed_blocks_counter ?? 0);
         const signedCount = Math.max(0, window - missed);
         const uptimePct = window > 0 ? (signedCount / window) * 100 : 100;
-
-        // Build block history - pakai logika Ping.pub
-        // MissedBlocksBitArray: array bit size SignedBlocksWindow
         const blockHistory: string[] = [];
         const totalBlocks = Math.min(window, 50);
         
@@ -60,8 +55,6 @@ function UptimePage() {
             blockHistory.push("signed");
           }
         } else {
-          // Distribusi missed blocks berdasarkan missed_blocks_counter
-          // Semakin tinggi missed, semakin banyak blok merah
           const missedPositions = new Set<number>();
           const step = Math.max(1, Math.floor(window / missed));
           
@@ -205,7 +198,7 @@ function UptimePage() {
         </button>
       </div>
 
-      {/* Stats - Ping.pub style */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Active Validators" value={validators.length} icon={<Activity className="w-4 h-4 text-violet-400" />} />
         <StatCard label="Block Window" value={window.toLocaleString()} icon={<BarChart3 className="w-4 h-4 text-cyan-400" />} />
@@ -213,7 +206,7 @@ function UptimePage() {
         <StatCard label="Latest Height" value={`#${latestHeight.toLocaleString()}`} icon={<TrendingUp className="w-4 h-4 text-amber-400" />} />
       </div>
 
-      {/* Chart + Health - Ping.pub style */}
+      {/* Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <SectionTitle title="Top 20 Validator Uptime" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
@@ -246,7 +239,7 @@ function UptimePage() {
         </Card>
       </div>
 
-      {/* Search + Filter - Ping.pub style */}
+      {/* Search + Filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -271,7 +264,7 @@ function UptimePage() {
         </button>
       </div>
 
-      {/* Table - Ping.pub style with block visualization */}
+      {/* Table */}
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -397,7 +390,7 @@ function UptimePage() {
             </tbody>
           </table>
         </div>
-        {/* Footer - Ping.pub style legend */}
+        {/* Footer */}
         <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20 flex flex-wrap items-center justify-center gap-4">
           <span><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500 mr-1 align-middle"></span> Signed</span>
           <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle"></span> Missed</span>
