@@ -114,4 +114,4 @@ export const cosmos = {
     rest.get(`/cosmos/bank/v1beta1/balances/${address}`).then((r: any) => r.data),
   validatorByAddr: (valoper: string) =>
     rest.get(`/cosmos/staking/v1beta1/validators/${valoper}`).then((r: any) => r.data?.validator),
-}; 
+};
