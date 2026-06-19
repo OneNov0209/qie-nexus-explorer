@@ -46,13 +46,12 @@ function UptimePage() {
         const isJailed = v.jailed || false;
         const missed = Number(info?.missed_blocks_counter ?? 0);
         const signedCount = Math.max(0, window - missed);
-        const uptimePct = isJailed ? 0 : (window > 0 ? (signedCount / window) * 100 : 100);
+        const uptimePct = isJailed ? 0 : (window > 0 ? ((window - missed) / window) * 100 : 100);
 
         const blockHistory: string[] = [];
         const totalBlocks = Math.min(window, 50);
         
         if (isJailed) {
-          // Jailed validator: semua blok merah
           for (let b = 0; b < totalBlocks; b++) {
             blockHistory.push("missed");
           }
@@ -96,7 +95,6 @@ function UptimePage() {
         };
       });
 
-      // Filter hanya yang BONDED dan tidak JAILED
       const activeValidators = mapped.filter((v: any) => 
         v.status === "BOND_STATUS_BONDED" && !v.jailed
       );
@@ -192,7 +190,6 @@ function UptimePage() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <SectionTitle
           title="Validator Uptime"
@@ -209,7 +206,6 @@ function UptimePage() {
         </button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Active Validators" value={validators.length} icon={<Activity className="w-4 h-4 text-violet-400" />} />
         <StatCard label="Jailed" value={jailedCount} icon={<AlertTriangle className="w-4 h-4 text-amber-400" />} />
@@ -218,7 +214,6 @@ function UptimePage() {
         <StatCard label="Latest Height" value={`#${latestHeight.toLocaleString()}`} icon={<TrendingUp className="w-4 h-4 text-amber-400" />} />
       </div>
 
-      {/* Chart + Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <SectionTitle title="Top 20 Validator Uptime" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
@@ -251,7 +246,6 @@ function UptimePage() {
         </Card>
       </div>
 
-      {/* Search + Filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -276,7 +270,6 @@ function UptimePage() {
         </button>
       </div>
 
-      {/* Table */}
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -344,7 +337,7 @@ function UptimePage() {
                                 style={{ width: `${Math.min(v.uptimePct, 100)}%` }} />
                             </div>
                             <span className={`text-sm font-bold w-14 text-right ${isGood ? "text-emerald-400" : isWarning ? "text-amber-400" : "text-red-400"}`}>
-                              {v.uptimePct.toFixed(1)}%
+                              {v.uptimePct.toFixed(2)}%
                             </span>
                           </div>
                         </td>
