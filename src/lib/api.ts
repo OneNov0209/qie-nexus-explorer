@@ -2,9 +2,13 @@ import axios from "axios";
 import { NETWORK } from "@/data/network";
 import { cached, ttlFor } from "./cache";
 
-// Gunakan proxy API routes (relatif ke domain yang sama)
 const rpcAxios = axios.create({ baseURL: '/api/rpc', timeout: 15000 });
 const restAxios = axios.create({ baseURL: '/api/rest', timeout: 15000 });
+
+const directApiAxios = axios.create({ 
+  baseURL: NETWORK.rest,
+  timeout: 15000 
+});
 
 function wrap(client: ReturnType<typeof axios.create>, tag: string) {
   return {
@@ -99,7 +103,7 @@ export const cosmos = {
     rest.get(`/cosmwasm/wasm/v1/code/${codeId}/contracts`).then((r: any) => r.data),
   slashingParams: () => rest.get("/cosmos/slashing/v1beta1/params").then((r: any) => r.data?.params),
   signingInfos: () =>
-    rest.get("/cosmos/slashing/v1beta1/signing_infos", { params: { "pagination.limit": 500 } }).then((r: any) => r.data),
+    directApiAxios.get("/cosmos/slashing/v1beta1/signing_infos", { params: { "pagination.limit": 500 } }).then((r: any) => r.data),
   delegations: (address: string) =>
     rest.get(`/cosmos/staking/v1beta1/delegations/${address}`).then((r: any) => r.data),
   unbonding: (address: string) =>
@@ -110,4 +114,4 @@ export const cosmos = {
     rest.get(`/cosmos/bank/v1beta1/balances/${address}`).then((r: any) => r.data),
   validatorByAddr: (valoper: string) =>
     rest.get(`/cosmos/staking/v1beta1/validators/${valoper}`).then((r: any) => r.data?.validator),
-};
+}; 
