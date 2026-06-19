@@ -1,13 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { cosmos, formatQIE, shorten } from "@/lib/api";
+import { cosmos, formatQIE } from "@/lib/api";
 import { NETWORK } from "@/data/network";
-import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/primitives";
+import { Card, SectionTitle, Loading, ErrorState } from "@/components/ui/primitives";
 import { useState, useMemo } from "react";
 import {
   Search, Activity, AlertTriangle, CheckCircle, XCircle,
   RefreshCw, TrendingUp, BarChart3, Gauge,
-  ChevronDown, ChevronUp, Eye, EyeOff, Shield, Clock
+  ChevronDown, ChevronUp, Eye, EyeOff, Shield
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { ValidatorAvatar } from "@/components/shared/ValidatorAvatar";
@@ -43,28 +43,32 @@ function UptimePage() {
 
       const mapped = validators.map((v: any) => {
         const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
-
+        const isJailed = v.jailed || false;
         const missed = Number(info?.missed_blocks_counter ?? 0);
         const signedCount = Math.max(0, window - missed);
-        const uptimePct = window > 0 ? (signedCount / window) * 100 : 100;
+        const uptimePct = isJailed ? 0 : (window > 0 ? (signedCount / window) * 100 : 100);
+
         const blockHistory: string[] = [];
         const totalBlocks = Math.min(window, 50);
         
-        if (missed === 0) {
+        if (isJailed) {
+          // Jailed validator: semua blok merah
+          for (let b = 0; b < totalBlocks; b++) {
+            blockHistory.push("missed");
+          }
+        } else if (missed === 0) {
           for (let b = 0; b < totalBlocks; b++) {
             blockHistory.push("signed");
           }
         } else {
           const missedPositions = new Set<number>();
           const step = Math.max(1, Math.floor(window / missed));
-          
           for (let m = 0; m < Math.min(missed, totalBlocks); m++) {
             const pos = window - 1 - (m * step);
             if (pos >= 0 && pos < window) {
               missedPositions.add(pos);
             }
           }
-          
           for (let b = 0; b < totalBlocks; b++) {
             const blockPos = window - 1 - b;
             blockHistory.push(missedPositions.has(blockPos) ? "missed" : "signed");
@@ -92,22 +96,29 @@ function UptimePage() {
         };
       });
 
-      // Sort by power (default)
-      mapped.sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens));
+      // Filter hanya yang BONDED dan tidak JAILED
+      const activeValidators = mapped.filter((v: any) => 
+        v.status === "BOND_STATUS_BONDED" && !v.jailed
+      );
+
+      activeValidators.sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens));
 
       return {
-        validators: mapped.map((v: any, i: number) => ({ ...v, rank: i + 1 })),
+        validators: activeValidators.map((v: any, i: number) => ({ ...v, rank: i + 1 })),
+        allValidators: mapped,
         window,
         latestHeight,
-        total: mapped.length,
-        params,
+        total: activeValidators.length,
+        jailedCount: mapped.filter((v: any) => v.jailed).length,
       };
     },
   });
 
   const validators = data?.validators ?? [];
+  const allValidators = data?.allValidators ?? [];
   const window = data?.window ?? 100;
   const latestHeight = data?.latestHeight ?? 0;
+  const jailedCount = data?.jailedCount ?? 0;
 
   const avgUptime = validators.length
     ? (validators.reduce((s: number, v: any) => s + v.uptimePct, 0) / validators.length).toFixed(1)
@@ -185,7 +196,7 @@ function UptimePage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <SectionTitle
           title="Validator Uptime"
-          sub={`Signed blocks window: ${window.toLocaleString()} · Click to expand details`}
+          sub={`Signed blocks window: ${window.toLocaleString()} · ${jailedCount} validators jailed`}
           icon={<Shield className="w-5 h-5 text-violet-500" />}
         />
         <button
@@ -199,14 +210,15 @@ function UptimePage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Active Validators" value={validators.length} icon={<Activity className="w-4 h-4 text-violet-400" />} />
+        <StatCard label="Jailed" value={jailedCount} icon={<AlertTriangle className="w-4 h-4 text-amber-400" />} />
         <StatCard label="Block Window" value={window.toLocaleString()} icon={<BarChart3 className="w-4 h-4 text-cyan-400" />} />
         <StatCard label="Avg Uptime" value={`${avgUptime}%`} icon={<Gauge className="w-4 h-4 text-emerald-400" />} />
         <StatCard label="Latest Height" value={`#${latestHeight.toLocaleString()}`} icon={<TrendingUp className="w-4 h-4 text-amber-400" />} />
       </div>
 
-      {/* Chart */}
+      {/* Chart + Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <SectionTitle title="Top 20 Validator Uptime" icon={<BarChart3 className="w-5 h-5 text-violet-400" />} />
@@ -312,6 +324,16 @@ function UptimePage() {
                           <Link to="/staking/$validator" params={{ validator: v.operator_address }} className="flex items-center gap-3 hover:text-violet-400 transition-colors">
                             <ValidatorAvatar identity={v.identity} moniker={moniker} size="sm" />
                             <span className="font-medium">{moniker}</span>
+                            {v.jailed && (
+                              <span className="text-[10px] font-bold text-red-400 bg-red-500/20 px-2 py-0.5 rounded-full border border-red-500/30 ml-2">
+                                JAILED
+                              </span>
+                            )}
+                            {v.tombstoned && (
+                              <span className="text-[10px] font-bold text-orange-400 bg-orange-500/20 px-2 py-0.5 rounded-full border border-orange-500/30 ml-1">
+                                TOMBSTONED
+                              </span>
+                            )}
                           </Link>
                         </td>
                         <td className="p-4 text-right font-mono text-xs">{formatQIE(v.tokens, 0)}</td>
@@ -353,10 +375,15 @@ function UptimePage() {
                           <span className={v.missed > 0 ? "text-red-400 font-bold" : "text-muted-foreground"}>{v.missed}</span>
                         </td>
                         <td className="p-4 text-center">
-                          {v.tombstoned ? <XCircle className="w-5 h-5 text-red-500 inline" /> :
-                           v.jailed ? <AlertTriangle className="w-5 h-5 text-amber-400 inline" /> :
-                           isGood ? <CheckCircle className="w-5 h-5 text-emerald-400 inline" /> :
-                           <XCircle className="w-5 h-5 text-red-400 inline" />}
+                          {v.jailed ? (
+                            <AlertTriangle className="w-5 h-5 text-amber-400 inline" />
+                          ) : v.tombstoned ? (
+                            <XCircle className="w-5 h-5 text-red-500 inline" />
+                          ) : isGood ? (
+                            <CheckCircle className="w-5 h-5 text-emerald-400 inline" />
+                          ) : (
+                            <XCircle className="w-5 h-5 text-red-400 inline" />
+                          )}
                         </td>
                         <td className="p-4 text-center">
                           <button onClick={() => toggleRow(v.operator_address)} className="text-muted-foreground hover:text-violet-400 transition-colors">
@@ -390,7 +417,6 @@ function UptimePage() {
             </tbody>
           </table>
         </div>
-        {/* Footer */}
         <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20 flex flex-wrap items-center justify-center gap-4">
           <span><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500 mr-1 align-middle"></span> Signed</span>
           <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle"></span> Missed</span>
