@@ -29,17 +29,19 @@ function UptimePage() {
     queryKey: ["uptime"],
     refetchInterval: 6_000,
     queryFn: async () => {
-      const [signing, params, vals, status] = await Promise.all([
+      const [signing, params, vals, status, latestBlock] = await Promise.all([
         cosmos.signingInfos(),
         cosmos.slashingParams(),
         cosmos.validators(),
         cosmos.status().catch(() => null),
+        cosmos.block().catch(() => null),
       ]);
 
       const window = Number(params?.signed_blocks_window ?? 100);
       const validators = vals?.validators ?? [];
       const signingInfos = signing?.info ?? [];
       const latestHeight = Number(status?.sync_info?.latest_block_height ?? 0);
+      const signatures = latestBlock?.block?.last_commit?.signatures || [];
 
       const mapped = validators.map((v: any) => {
         const info = signingInfos.find((s: any) => s.address === v.consensus_pubkey?.key);
@@ -60,17 +62,20 @@ function UptimePage() {
             blockHistory.push("signed");
           }
         } else {
-          const missedPositions = new Set<number>();
-          const step = Math.max(1, Math.floor(window / missed));
-          for (let m = 0; m < Math.min(missed, totalBlocks); m++) {
-            const pos = window - 1 - (m * step);
-            if (pos >= 0 && pos < window) {
-              missedPositions.add(pos);
+          const validatorAddress = v.consensus_pubkey?.key;
+          const sig = signatures.find((s: any) => s.validator_address === validatorAddress);
+          
+          if (sig) {
+            const flag = sig.block_id_flag;
+            if (flag === 'BLOCK_ID_FLAG_COMMIT') {
+              blockHistory.push("signed");
+            } else if (flag === 'BLOCK_ID_FLAG_PRECOMMIT') {
+              blockHistory.push("precommit");
+            } else {
+              blockHistory.push("missed");
             }
-          }
-          for (let b = 0; b < totalBlocks; b++) {
-            const blockPos = window - 1 - b;
-            blockHistory.push(missedPositions.has(blockPos) ? "missed" : "signed");
+          } else {
+            blockHistory.push("missed");
           }
         }
 
@@ -113,7 +118,6 @@ function UptimePage() {
   });
 
   const validators = data?.validators ?? [];
-  const allValidators = data?.allValidators ?? [];
   const window = data?.window ?? 100;
   const latestHeight = data?.latestHeight ?? 0;
   const jailedCount = data?.jailedCount ?? 0;
@@ -285,7 +289,7 @@ function UptimePage() {
                 <th className="text-right p-4 text-xs text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-violet-400" onClick={() => handleSort("uptime")}>
                   Uptime {sortBy === "uptime" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
-                <th className="text-left p-4 text-xs text-muted-foreground uppercase tracking-wider">Last {Math.min(window, 50)} Blocks</th>
+                <th className="text-left p-4 text-xs text-muted-foreground uppercase tracking-wider">Last 50 Blocks</th>
                 <th className="text-right p-4 text-xs text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-violet-400" onClick={() => handleSort("missed")}>
                   Missed {sortBy === "missed" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
@@ -348,14 +352,17 @@ function UptimePage() {
                                 let blockColor = "";
                                 let titleText = "";
                                 if (status === "signed") { 
-                                  blockColor = "bg-emerald-500 hover:bg-emerald-400 shadow-sm shadow-emerald-500/30"; 
+                                  blockColor = "bg-emerald-500 hover:bg-emerald-400"; 
                                   titleText = "Signed"; 
+                                } else if (status === "precommit") { 
+                                  blockColor = "bg-yellow-500 hover:bg-yellow-400"; 
+                                  titleText = "Precommitted"; 
                                 } else { 
-                                  blockColor = "bg-red-500 hover:bg-red-400 shadow-sm shadow-red-500/30"; 
+                                  blockColor = "bg-red-500 hover:bg-red-400"; 
                                   titleText = "Missed"; 
                                 }
                                 return (
-                                  <div key={bi} title={`Block #${latestHeight - (Math.min(window, 50) - 1) + bi}: ${titleText}`}
+                                  <div key={bi} title={`Block: ${titleText}`}
                                     className={`w-[6px] h-6 rounded-sm transition-all duration-300 hover:scale-150 hover:z-10 cursor-pointer ${blockColor}`} />
                                 );
                               })}
@@ -412,11 +419,10 @@ function UptimePage() {
         </div>
         <div className="p-3 border-t border-border/50 text-center text-[11px] text-muted-foreground bg-muted/20 flex flex-wrap items-center justify-center gap-4">
           <span><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500 mr-1 align-middle"></span> Signed</span>
+          <span><span className="inline-block w-3 h-3 rounded-sm bg-yellow-500 mr-1 align-middle"></span> Precommitted</span>
           <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle"></span> Missed</span>
           <span className="text-muted-foreground">|</span>
-          <span>Data from last {Math.min(window, 50)} blocks · Uptime = (Signed / {window}) × 100%</span>
-          <span className="text-muted-foreground">|</span>
-          <span className="text-[10px]">🟩 Signed · 🟥 Missed · Hover blocks for details</span>
+          <span>Data from last 50 blocks · Uptime = (Signed / {window}) × 100%</span>
         </div>
       </Card>
     </div>
