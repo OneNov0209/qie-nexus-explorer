@@ -2,11 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWallet } from "@/lib/wallet";
-import { TOKENS, Token, getToken } from "@/data/tokens";
+import { TOKENS, Token } from "@/data/tokens";
 import { getPairPrice } from "@/lib/subgraph";
-import { Card, SectionTitle, Loading } from "@/components/ui/primitives";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, SectionTitle } from "@/components/ui/primitives";
 import { ChevronDown, ArrowUpDown, Loader2, Settings, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -19,12 +17,13 @@ export const Route = createFileRoute("/swap")({
 function SwapPage() {
   const isConnected = useWallet((state) => !!state.evm.address);
   const address = useWallet((state) => state.evm.address);
-  const evm = useWallet((state) => state.evm);
   
   const [tokenIn, setTokenIn] = useState<Token>(TOKENS[0]);
   const [tokenOut, setTokenOut] = useState<Token>(TOKENS[1]);
   const [amountIn, setAmountIn] = useState("");
   const [amountOut, setAmountOut] = useState("");
+  const [balanceIn, setBalanceIn] = useState("0");
+  const [balanceOut, setBalanceOut] = useState("0");
   const [isLoading, setIsLoading] = useState(false);
   const [slippage, setSlippage] = useState(0.5);
   const [showSettings, setShowSettings] = useState(false);
@@ -43,12 +42,35 @@ function SwapPage() {
     }
   };
 
+  const fetchBalances = async () => {
+    if (!address) return;
+    try {
+      const { getTokenBalance, getNativeBalance } = await import("@/lib/evm-contracts");
+      const balIn = tokenIn.isNative
+        ? await getNativeBalance(address)
+        : await getTokenBalance(address, tokenIn.address);
+      const balOut = tokenOut.isNative
+        ? await getNativeBalance(address)
+        : await getTokenBalance(address, tokenOut.address);
+      setBalanceIn(balIn);
+      setBalanceOut(balOut);
+    } catch (error) {
+      console.error("Failed to fetch balances:", error);
+    }
+  };
+
   const { data: pairData, isLoading: isPriceLoading } = useQuery({
     queryKey: ["pair-price", tokenIn.address, tokenOut.address],
     queryFn: () => getPairPrice(tokenIn.address, tokenOut.address),
     refetchInterval: 10000,
     enabled: !!tokenIn.address && !!tokenOut.address,
   });
+
+  useEffect(() => {
+    if (address) {
+      fetchBalances();
+    }
+  }, [address, tokenIn, tokenOut]);
 
   useEffect(() => {
     if (!amountIn || Number(amountIn) <= 0 || !pairData) {
@@ -72,7 +94,7 @@ function SwapPage() {
   }
 
   function setMaxAmount() {
-    setAmountIn("1000");
+    setAmountIn(balanceIn);
   }
 
   async function handleSwap() {
@@ -84,6 +106,10 @@ function SwapPage() {
       toast.error("Enter a valid amount");
       return;
     }
+    if (Number(amountIn) > Number(balanceIn)) {
+      toast.error("Insufficient balance");
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -91,6 +117,7 @@ function SwapPage() {
       toast.success("Swap simulated! (Router address needed for real swap)");
       setAmountIn("");
       setAmountOut("");
+      await fetchBalances();
     } catch (error: any) {
       toast.error("Swap failed", { description: error.message });
     } finally {
@@ -125,7 +152,10 @@ function SwapPage() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionTitle title="Swap" icon={<ArrowUpDown className="w-5 h-5 text-violet-400" />} />
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="w-5 h-5 text-violet-400" />
+              <h2 className="text-lg font-bold">Swap</h2>
+            </div>
             <button 
               onClick={() => setShowSettings(!showSettings)} 
               className="text-muted-foreground hover:text-white transition-colors p-2 rounded-lg hover:bg-muted/30"
@@ -168,7 +198,7 @@ function SwapPage() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">From</span>
               <span className="text-xs text-muted-foreground">
-                Balance: 1,000.00 {tokenIn.symbol}
+                Balance: {Number(balanceIn).toFixed(4)} {tokenIn.symbol}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -206,7 +236,7 @@ function SwapPage() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">To</span>
               <span className="text-xs text-muted-foreground">
-                Balance: 500.00 {tokenOut.symbol}
+                Balance: {Number(balanceOut).toFixed(4)} {tokenOut.symbol}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -255,15 +285,17 @@ function SwapPage() {
 
           <button
             onClick={handleSwap}
-            disabled={isLoading || !amountIn || Number(amountIn) <= 0 || !pairData}
+            disabled={isLoading || !amountIn || Number(amountIn) <= 0 || !pairData || Number(amountIn) > Number(balanceIn)}
             className="w-full mt-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl py-3 font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
             {isLoading 
               ? "Swapping..." 
-              : !pairData && amountIn 
-                ? "Pair not available" 
-                : `Swap ${tokenIn.symbol} → ${tokenOut.symbol}`}
+              : Number(amountIn) > Number(balanceIn)
+                ? "Insufficient balance"
+                : !pairData && amountIn 
+                  ? "Pair not available" 
+                  : `Swap ${tokenIn.symbol} → ${tokenOut.symbol}`}
           </button>
 
           <div className="mt-3 text-center text-[10px] text-muted-foreground">
