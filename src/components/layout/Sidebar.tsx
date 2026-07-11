@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Boxes, Receipt, Vote, Layers, Activity,
   Coins, Settings2, Network, FileCode2, RefreshCw, AppWindow, Radio,
-  ChevronLeft, ChevronRight, Fuel, Trophy, ArrowRightLeft, FileCheck, ArrowDownLeft, BarChart3,
+  ChevronLeft, ChevronRight, Fuel, Trophy, ArrowRightLeft, FileCheck, ArrowDownLeft, BarChart3, ArrowRightLeft,
 } from "lucide-react";
 import { NETWORK } from "@/data/network";
 import { useState } from "react";
@@ -15,6 +15,7 @@ const nav = [
   { to: "/staking", label: "Staking", icon: Layers },
   { to: "/governance", label: "Governance", icon: Vote },
   { to: "/uptime", label: "Uptime", icon: Activity },
+  { to: "/swap", label: "Swap", icon: ArrowRightLeft },
   { to: "/pairs", label: "Pairs", icon: BarChart3 },
   { to: "/gas-tracker", label: "Gas Tracker", icon: Fuel },
   { to: "/top-accounts", label: "Top Accounts", icon: Trophy },
