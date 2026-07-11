@@ -40,7 +40,7 @@ export const TOKENS: Token[] = [
     logo: "https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/qie-logo.png",
   },
   {
-    address: "0x079Acabcc1fcd9E7211a0Bc294aee02EEfCe77e3",
+    address: "0xA795c4D885522d5e37956265837636b023445871",
     symbol: "QIDEX",
     name: "QIDEX Token",
     decimals: 18,
