@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Boxes, Receipt, Vote, Layers, Activity,
   Coins, Settings2, Network, FileCode2, RefreshCw, AppWindow, Radio,
-  ChevronLeft, ChevronRight, Fuel, Trophy, ArrowRightLeft, FileCheck, ArrowDownLeft,
+  ChevronLeft, ChevronRight, Fuel, Trophy, ArrowRightLeft, FileCheck, ArrowDownLeft, BarChart3,
 } from "lucide-react";
 import { NETWORK } from "@/data/network";
 import { useState } from "react";
