@@ -15,6 +15,7 @@ const nav = [
   { to: "/staking", label: "Staking", icon: Layers },
   { to: "/governance", label: "Governance", icon: Vote },
   { to: "/uptime", label: "Uptime", icon: Activity },
+  { to: "/pairs", label: "Pairs", icon: BarChart3 },
   { to: "/gas-tracker", label: "Gas Tracker", icon: Fuel },
   { to: "/top-accounts", label: "Top Accounts", icon: Trophy },
   { to: "/tokens", label: "Tokens", icon: Coins },
