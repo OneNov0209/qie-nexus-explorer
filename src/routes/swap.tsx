@@ -18,15 +18,28 @@ export const Route = createFileRoute("/swap")({
 
 function SwapPage() {
   const { isConnected, address } = useWallet();
-  const [tokenIn, setTokenIn] = useState<Token>(TOKENS[0]); // QIE
-  const [tokenOut, setTokenOut] = useState<Token>(TOKENS[1]); // wUSDC
+  const [tokenIn, setTokenIn] = useState<Token>(TOKENS[0]);
+  const [tokenOut, setTokenOut] = useState<Token>(TOKENS[1]);
   const [amountIn, setAmountIn] = useState("");
   const [amountOut, setAmountOut] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [slippage, setSlippage] = useState(0.5);
   const [showSettings, setShowSettings] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  // Ambil harga pair dari Subgraph
+  const connectWallet = async () => {
+    setIsConnecting(true);
+    try {
+      const { connectMetaMask } = await import("@/lib/wallet");
+      await connectMetaMask();
+      toast.success("Wallet connected!");
+    } catch (error: any) {
+      toast.error("Failed to connect", { description: error.message });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   const { data: pairData, isLoading: isPriceLoading } = useQuery({
     queryKey: ["pair-price", tokenIn.address, tokenOut.address],
     queryFn: () => getPairPrice(tokenIn.address, tokenOut.address),
@@ -34,7 +47,6 @@ function SwapPage() {
     enabled: !!tokenIn.address && !!tokenOut.address,
   });
 
-  // Hitung quote saat amount berubah
   useEffect(() => {
     if (!amountIn || Number(amountIn) <= 0 || !pairData) {
       setAmountOut("");
@@ -57,7 +69,6 @@ function SwapPage() {
   }
 
   function setMaxAmount() {
-    // Sementara pakai 1000 sebagai dummy, nanti diisi dari balance real
     setAmountIn("1000");
   }
 
@@ -73,7 +84,6 @@ function SwapPage() {
 
     setIsLoading(true);
     try {
-      // Sementara simulasi sukses
       await new Promise((resolve) => setTimeout(resolve, 2000));
       toast.success("Swap simulated! (Router address needed for real swap)");
       setAmountIn("");
@@ -94,7 +104,14 @@ function SwapPage() {
           </div>
           <h2 className="text-2xl font-bold mb-2">Connect Wallet to Swap</h2>
           <p className="text-muted-foreground mb-6">Connect your EVM wallet to start swapping on QIEDEX</p>
-          <Button className="btn-primary w-full">Connect Wallet</Button>
+          <button 
+            onClick={connectWallet}
+            disabled={isConnecting}
+            className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl px-6 py-3 font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isConnecting ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
+            {isConnecting ? "Connecting..." : "Connect Wallet"}
+          </button>
         </Card>
       </div>
     );
@@ -104,7 +121,6 @@ function SwapPage() {
     <div className="max-w-md mx-auto py-8">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="p-6">
-          {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <SectionTitle title="Swap" icon={<ArrowUpDown className="w-5 h-5 text-violet-400" />} />
             <button 
@@ -115,7 +131,6 @@ function SwapPage() {
             </button>
           </div>
 
-          {/* Settings */}
           {showSettings && (
             <div className="mb-4 p-3 rounded-xl bg-muted/30 border border-border/60">
               <label className="text-xs text-muted-foreground block mb-2">Slippage Tolerance</label>
@@ -146,7 +161,6 @@ function SwapPage() {
             </div>
           )}
 
-          {/* Token In */}
           <div className="p-4 rounded-xl bg-muted/20 border border-border/60">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">From</span>
@@ -155,7 +169,7 @@ function SwapPage() {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <Input
+              <input
                 type="number"
                 placeholder="0.0"
                 value={amountIn}
@@ -176,7 +190,6 @@ function SwapPage() {
             </button>
           </div>
 
-          {/* Swap Button */}
           <div className="flex justify-center -my-2 relative z-10">
             <button
               onClick={handleSwapTokens}
@@ -186,7 +199,6 @@ function SwapPage() {
             </button>
           </div>
 
-          {/* Token Out */}
           <div className="p-4 rounded-xl bg-muted/20 border border-border/60 mt-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">To</span>
@@ -195,7 +207,7 @@ function SwapPage() {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <Input
+              <input
                 type="text"
                 placeholder="0.0"
                 value={isPriceLoading ? "..." : amountOut}
@@ -210,7 +222,6 @@ function SwapPage() {
             </div>
           </div>
 
-          {/* Price Info */}
           {amountIn && Number(amountIn) > 0 && amountOut && !isPriceLoading && (
             <div className="mt-4 p-3 rounded-xl bg-muted/30 border border-border/60">
               <div className="flex justify-between text-sm">
@@ -232,7 +243,6 @@ function SwapPage() {
             </div>
           )}
 
-          {/* Info jika pair tidak ditemukan */}
           {pairData === null && amountIn && Number(amountIn) > 0 && (
             <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400" />
@@ -240,21 +250,19 @@ function SwapPage() {
             </div>
           )}
 
-          {/* Swap Button */}
-          <Button
+          <button
             onClick={handleSwap}
             disabled={isLoading || !amountIn || Number(amountIn) <= 0 || !pairData}
             className="w-full mt-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl py-3 font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50"
           >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
             {isLoading 
               ? "Swapping..." 
               : !pairData && amountIn 
                 ? "Pair not available" 
                 : `Swap ${tokenIn.symbol} → ${tokenOut.symbol}`}
-          </Button>
+          </button>
 
-          {/* Note */}
           <div className="mt-3 text-center text-[10px] text-muted-foreground">
             ⚠️ Swap is currently in simulation mode. Router address needed for live transactions.
           </div>
