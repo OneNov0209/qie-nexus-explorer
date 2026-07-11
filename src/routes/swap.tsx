@@ -17,7 +17,10 @@ export const Route = createFileRoute("/swap")({
 });
 
 function SwapPage() {
-  const { isConnected, address } = useWallet();
+  const isConnected = useWallet((state) => !!state.evm.address);
+  const address = useWallet((state) => state.evm.address);
+  const evm = useWallet((state) => state.evm);
+  
   const [tokenIn, setTokenIn] = useState<Token>(TOKENS[0]);
   const [tokenOut, setTokenOut] = useState<Token>(TOKENS[1]);
   const [amountIn, setAmountIn] = useState("");
