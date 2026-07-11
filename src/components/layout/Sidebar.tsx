@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Boxes, Receipt, Vote, Layers, Activity,
   Coins, Settings2, Network, FileCode2, RefreshCw, AppWindow, Radio,
   ChevronLeft, ChevronRight, BarChart3, ArrowRightLeft, Gauge,
-  Users, CheckCircle, GitBranch, ExternalLink
+  Users, CheckCircle, GitBranch, ExternalLink, ChevronDown, ChevronUp
 } from "lucide-react";
 import { NETWORK } from "@/data/network";
 import { useState } from "react";
@@ -11,7 +11,9 @@ import { cn } from "@/lib/utils";
 
 const menuGroups = [
   {
+    id: "core",
     label: "Core",
+    icon: LayoutDashboard,
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/blocks", label: "Blocks", icon: Boxes },
@@ -19,7 +21,9 @@ const menuGroups = [
     ]
   },
   {
+    id: "defi",
     label: "DeFi & Trading",
+    icon: ArrowRightLeft,
     items: [
       { to: "/swap", label: "Swap", icon: ArrowRightLeft },
       { to: "/pairs", label: "Pairs", icon: BarChart3 },
@@ -27,7 +31,9 @@ const menuGroups = [
     ]
   },
   {
+    id: "staking",
     label: "Staking & Governance",
+    icon: Layers,
     items: [
       { to: "/staking", label: "Staking", icon: Layers },
       { to: "/governance", label: "Governance", icon: Vote },
@@ -35,7 +41,9 @@ const menuGroups = [
     ]
   },
   {
+    id: "explorer",
     label: "Explorer",
+    icon: Gauge,
     items: [
       { to: "/gas-tracker", label: "Gas Tracker", icon: Gauge },
       { to: "/top-accounts", label: "Top Accounts", icon: Users },
@@ -46,7 +54,9 @@ const menuGroups = [
     ]
   },
   {
+    id: "network",
     label: "Network",
+    icon: Network,
     items: [
       { to: "/supply", label: "Supply", icon: Coins },
       { to: "/parameters", label: "Parameters", icon: Settings2 },
@@ -61,7 +71,20 @@ const menuGroups = [
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const toggleGroup = (groupId: string) => {
+    setHiddenGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId);
+      } else {
+        newSet.add(groupId);
+      }
+      return newSet;
+    });
+  };
 
   return (
     <aside
@@ -82,39 +105,57 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
-        {menuGroups.map((group, idx) => (
-          <div key={idx}>
-            {!collapsed && (
-              <div className="px-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-                {group.label}
-              </div>
-            )}
-            <div className="space-y-1">
-              {group.items.map(({ to, label, icon: Icon }) => {
-                const active = pathname === to || (to === "/dashboard" && pathname === "/");
-                return (
-                  <Link
-                    key={to}
-                    to={to}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all group relative",
-                      active
-                        ? "bg-gradient-to-r from-primary/20 to-accent/20 text-white shadow-[inset_0_0_0_1px_rgba(216,79,184,0.25)]"
-                        : "text-muted-foreground hover:text-white hover:bg-white/5"
-                    )}
-                  >
-                    {active && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r bg-gradient-to-b from-primary to-accent" />
-                    )}
-                    <Icon className="w-[18px] h-[18px] shrink-0" />
-                    {!collapsed && <span className="font-medium">{label}</span>}
-                  </Link>
-                );
-              })}
+      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-2">
+        {menuGroups.map((group) => {
+          const isHidden = hiddenGroups.has(group.id);
+          
+          return (
+            <div key={group.id} className="space-y-1">
+              {!collapsed && (
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold hover:text-white transition-colors rounded-lg hover:bg-white/5"
+                >
+                  <div className="flex items-center gap-2">
+                    <group.icon className="w-3 h-3" />
+                    <span>{group.label}</span>
+                  </div>
+                  {isHidden ? (
+                    <ChevronRight className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </button>
+              )}
+              
+              {!isHidden && (
+                <div className="space-y-1">
+                  {group.items.map(({ to, label, icon: Icon }) => {
+                    const active = pathname === to || (to === "/dashboard" && pathname === "/");
+                    return (
+                      <Link
+                        key={to}
+                        to={to}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all group relative",
+                          active
+                            ? "bg-gradient-to-r from-primary/20 to-accent/20 text-white shadow-[inset_0_0_0_1px_rgba(216,79,184,0.25)]"
+                            : "text-muted-foreground hover:text-white hover:bg-white/5"
+                        )}
+                      >
+                        {active && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r bg-gradient-to-b from-primary to-accent" />
+                        )}
+                        <Icon className="w-[18px] h-[18px] shrink-0" />
+                        {!collapsed && <span className="font-medium">{label}</span>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="p-3 border-t border-border/60">
