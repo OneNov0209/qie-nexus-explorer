@@ -46,7 +46,6 @@ function SwapPage() {
     (tokenIn.isNative && tokenOut.address === WQIE_ADDRESS) ||
     (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative);
 
-  // Load history from localStorage
   useEffect(() => {
     if (address) {
       const saved = localStorage.getItem(`swap-history-${address}`);
@@ -58,7 +57,6 @@ function SwapPage() {
     }
   }, [address]);
 
-  // Save history to localStorage
   const saveHistory = (item: SwapHistoryItem) => {
     const newHistory = [item, ...history].slice(0, 20);
     setHistory(newHistory);
@@ -68,6 +66,10 @@ function SwapPage() {
   };
 
   const connectWallet = async () => {
+    if (typeof window === "undefined" || !window.ethereum) {
+      toast.error("MetaMask not installed. Please install MetaMask.");
+      return;
+    }
     setIsConnecting(true);
     try {
       const { connectMetaMask } = await import("@/lib/wallet");
@@ -163,6 +165,11 @@ function SwapPage() {
       toast.error("Insufficient balance");
       return;
     }
+    if (typeof window === "undefined" || !window.ethereum) {
+      toast.error("MetaMask not detected");
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -174,7 +181,6 @@ function SwapPage() {
       let fromAmount = amountIn;
       let toAmount = amountOut || "0";
 
-      // Case 1: QIE → wQIE (Wrap)
       if (tokenIn.isNative && tokenOut.address === WQIE_ADDRESS) {
         const result = await wrapQIE(amountIn);
         resultHash = result.hash;
@@ -182,7 +188,6 @@ function SwapPage() {
         toAmount = amountIn;
         toast.success("QIE wrapped to wQIE!");
       }
-      // Case 2: wQIE → QIE (Unwrap)
       else if (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative) {
         const result = await unwrapQIE(amountIn);
         resultHash = result.hash;
@@ -190,7 +195,6 @@ function SwapPage() {
         toAmount = amountIn;
         toast.success("wQIE unwrapped to QIE!");
       }
-      // Case 3: Native QIE → Other token (Auto-wrap + Swap)
       else if (tokenIn.isNative && !tokenOut.isNative && tokenOut.address !== WQIE_ADDRESS) {
         toast.info("Wrapping QIE to wQIE first...");
         await wrapQIE(amountIn);
@@ -202,7 +206,6 @@ function SwapPage() {
         txType = "swap";
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
       }
-      // Case 4: Other token → Native QIE (Swap + Auto-unwrap)
       else if (!tokenIn.isNative && tokenOut.isNative && tokenIn.address !== WQIE_ADDRESS) {
         toast.info("Swapping to wQIE first...");
         
@@ -222,7 +225,6 @@ function SwapPage() {
         txType = "swap";
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
       }
-      // Case 5: Regular token-to-token swap (including wQIE)
       else if (!tokenIn.isNative && !tokenOut.isNative) {
         const allowance = await getAllowance(address, tokenIn.address);
         if (Number(allowance) < Number(amountIn)) {
@@ -237,7 +239,6 @@ function SwapPage() {
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
       }
 
-      // Save to history
       if (resultHash) {
         saveHistory({
           hash: resultHash,
@@ -257,7 +258,6 @@ function SwapPage() {
 
     } catch (error: any) {
       toast.error("Swap failed", { description: error.message });
-      // Save failed transaction
       if (error?.transactionHash) {
         saveHistory({
           hash: error.transactionHash,
@@ -470,7 +470,6 @@ function SwapPage() {
         </Card>
       </motion.div>
 
-      {/* Swap History */}
       {history.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <Card className="p-4">
