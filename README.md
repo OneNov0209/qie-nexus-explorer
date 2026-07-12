@@ -8,6 +8,7 @@
   [![Website](https://img.shields.io/badge/Explorer-qie.explorer.onenov.xyz-violet?style=for-the-badge)](https://qie.explorer.onenov.xyz)
   [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
   [![Powered by](https://img.shields.io/badge/Powered_by-OneNov-8B5CF6?style=for-the-badge)](https://onenov.xyz)
+  [![Built with](https://img.shields.io/badge/Built_with-TanStack_Start-FF4154?style=for-the-badge)](https://tanstack.com/start)
 
 </div>
 
@@ -27,8 +28,8 @@
 - Real-time network statistics with live updating cards
 - Block activity chart with transaction count visualization
 - Network pulse monitoring (staking distribution, validator status)
-- Application version tracking with build dependencies
 - Portfolio breakdown with interactive pie & bar charts
+- QIE Price Chart with multiple timeframes (Live, 1D, 1W, 1M, 1Y, All)
 
 ### 📦 **Block Explorer**
 - Browse latest blocks with auto-refresh (every 6 seconds)
@@ -130,9 +131,17 @@
 
 ### 👛 **Multi-Wallet Support**
 - **QIE Wallet** — Official EVM wallet for balance & transfers
+- **MetaMask** — EVM wallet for Web3 interactions
 - **Keplr** — Cosmos wallet for staking, governance, and rewards
 - Real-time balance display after connection
 - Account change detection and auto-update
+
+### 💱 **Swap & DeFi**
+- Token swap with real-time quotes from QIEDEX
+- Auto-wrap/unwrap support for QIE ↔ wQIE
+- Transaction history with status tracking
+- Trading pairs explorer from Subgraph
+- Cross-chain bridge interface
 
 ### 🎨 **UI/UX**
 - Dark/Light theme with persistent preference
@@ -140,93 +149,164 @@
 - 3D card effects with hover animations
 - Gradient color schemes with violet/fuchsia/cyan accents
 - Framer Motion animations throughout
-- Collapsible sidebar navigation
+- Collapsible sidebar navigation with grouped menus
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Technology | Purpose |
-|------------|---------|
-| **React 19** | UI framework |
-| **TypeScript** | Type safety |
-| **TanStack Start** | Full-stack React framework |
-| **TanStack Router** | File-based routing |
-| **TanStack Query** | Server state management |
-| **Recharts** | Data visualization & charts |
-| **Framer Motion** | Animations |
-| **Tailwind CSS** | Styling |
-| **shadcn/ui** | UI components |
-| **Zustand** | Client state (wallet) |
-| **CosmJS** | Cosmos SDK integration |
-| **Vite** | Build tool |
-| **Nitro** | Server engine |
-| **Vercel** | Deployment |
+| Category | Technology | Purpose |
+|----------|------------|---------|
+| **Frontend** | React 19 | UI framework |
+| | TypeScript | Type safety |
+| | TanStack Start | Full-stack React framework |
+| | TanStack Router | File-based routing |
+| | TanStack Query | Server state management |
+| | Recharts | Data visualization & charts |
+| | Framer Motion | Animations |
+| | Tailwind CSS | Styling |
+| | shadcn/ui | UI components |
+| | Zustand | Client state (wallet) |
+| **Blockchain** | CosmJS | Cosmos SDK integration |
+| | ethers.js | EVM integration |
+| | @cosmjs/stargate | Cosmos transaction signing |
+| | @cosmjs/proto-signing | Protobuf signing |
+| **Build** | Vite | Build tool |
+| | Nitro | Server engine |
+| | Bun | Package manager & runtime |
+| **Deployment** | Vercel | Hosting & deployment |
 
 ---
-
-## 📁 Project Structure
-
 ```
+## 📁 Project Structure
 
 src/
 ├── components/
-│   ├── layout/          # Sidebar, Topbar, Footer, WalletButton
-│   ├── shared/          # ValidatorAvatar, shared components
-│   ├── staking/         # StakingModal
-│   └── ui/              # shadcn/ui components (Card, Dialog, etc.)
+│   ├── layout/
+│   │   ├── Sidebar.tsx          # Navigation with collapsible groups
+│   │   ├── Topbar.tsx           # Search bar & wallet button
+│   │   ├── Footer.tsx           # Site footer
+│   │   └── WalletButton.tsx     # Multi-wallet connection
+│   ├── shared/
+│   │   └── ValidatorAvatar.tsx  # Keybase avatar integration
+│   ├── staking/
+│   │   └── StakingModal.tsx     # Delegate/Redelegate/Undelegate/Claim
+│   └── ui/                      # shadcn/ui components (40+)
+│       ├── card.tsx
+│       ├── dialog.tsx
+│       ├── button.tsx
+│       └── ... (40+ components)
 ├── data/
-│   └── network.ts       # QIE chain configuration & footer links
+│   ├── network.ts               # QIE chain config & footer links
+│   └── tokens.ts                # Token list & contract addresses
 ├── hooks/
-│   └── use-mobile.tsx   # Mobile detection hook
+│   └── use-mobile.tsx           # Mobile detection hook
 ├── lib/
-│   ├── api.ts           # API helpers (Cosmos, EVM RPC, caching)
-│   ├── wallet.ts        # Wallet connection (QIE Wallet, Keplr)
-│   ├── wallet-tx.ts     # Transaction helpers (Delegate, Vote, Claim)
-│   └── utils.ts         # Utility functions
+│   ├── api.ts                   # Cosmos/EVM RPC + caching
+│   ├── wallet.ts                # QIE Wallet, MetaMask, Keplr
+│   ├── wallet-tx.ts             # Delegate, Vote, Claim helpers
+│   ├── evm-contracts.ts         # Swap, Wrap, Unwrap, Approve
+│   ├── subgraph.ts              # QIEDEX Subgraph queries
+│   ├── cache.ts                 # TTL caching utilities
+│   └── utils.ts                 # Utility functions
 ├── routes/
-│   ├── __root.tsx       # Root layout
-│   ├── index.tsx        # Landing page
-│   ├── dashboard.tsx    # Dashboard
-│   ├── blocks.tsx       # Blocks layout
-│   ├── blocks.index.tsx # Blocks list
-│   ├── blocks.$height.tsx # Block detail
-│   ├── transactions.tsx # TX layout
-│   ├── transactions.index.tsx # TX list
-│   ├── tx.$hash.tsx     # TX detail
-│   ├── staking.tsx      # Staking layout
-│   ├── staking.index.tsx # Validator list
-│   ├── staking.$validator.tsx # Validator detail
-│   ├── governance.tsx   # Governance layout
-│   ├── governance.index.tsx # Proposal list
+│   ├── __root.tsx               # Root layout with theme
+│   ├── index.tsx                # Landing page with animations
+│   ├── dashboard.tsx            # Dashboard with live stats
+│   ├── blocks.tsx               # Blocks layout
+│   ├── blocks.index.tsx         # Blocks list
+│   ├── blocks.$height.tsx       # Block detail
+│   ├── transactions.tsx         # TX layout
+│   ├── transactions.index.tsx   # TX list
+│   ├── tx.$hash.tsx             # TX detail with event logs
+│   ├── staking.tsx              # Staking layout
+│   ├── staking.index.tsx        # Validator list
+│   ├── staking.$validator.tsx   # Validator detail
+│   ├── governance.tsx           # Governance layout
+│   ├── governance.index.tsx     # Proposal list
 │   ├── governance.$proposalId.tsx # Proposal detail
-│   ├── uptime.tsx       # Uptime monitor
-│   ├── gas-tracker.tsx  # Gas tracker
-│   ├── top-accounts.tsx # Top accounts
-│   ├── tokens.tsx       # Token list
-│   ├── token-transfers.tsx # Token transfers
-│   ├── verified-contracts.tsx # Verified contracts
-│   ├── internal-txs.tsx # Internal transactions
-│   ├── consensus.tsx    # Consensus state
-│   ├── ibc.tsx          # IBC monitor
-│   ├── parameters.tsx   # Chain parameters
-│   ├── cosmwasm.tsx     # CosmWasm status
-│   ├── statesync.tsx    # State sync config
-│   ├── supply.tsx       # Supply info
-│   ├── address.$address.tsx # Address detail
-│   └── widgets.tsx      # Widgets page
-├── server.ts            # SSR handler + API proxy
-├── start.ts             # TanStack Start entry
-└── styles.css           # Global styles
+│   ├── uptime.tsx               # Validator uptime monitor
+│   ├── gas-tracker.tsx          # Gas price tracker
+│   ├── top-accounts.tsx         # Address leaderboard
+│   ├── tokens.tsx               # Token list
+│   ├── token-transfers.tsx      # Token transfers
+│   ├── verified-contracts.tsx   # Verified contracts
+│   ├── internal-txs.tsx         # Internal transactions
+│   ├── consensus.tsx            # Consensus state
+│   ├── ibc.tsx                  # IBC monitor
+│   ├── parameters.tsx           # Chain parameters
+│   ├── cosmwasm.tsx             # CosmWasm status
+│   ├── statesync.tsx            # State sync config
+│   ├── supply.tsx               # Supply info
+│   ├── address.$address.tsx     # Address detail
+│   ├── swap.tsx                 # Swap with wrap/unwrap
+│   ├── pairs.tsx                # Trading pairs from Subgraph
+│   ├── bridge.tsx               # Bridge interface
+│   └── widgets.tsx              # Widgets page
+├── server.ts                    # SSR handler + API proxy
+├── start.ts                     # TanStack Start entry
+├── styles.css                   # Global styles with Tailwind
+├── routeTree.gen.ts             # Auto-generated router
+├── vite.config.ts               # Vite configuration
+├── vercel.json                  # Vercel deployment config
+├── tsconfig.json                # TypeScript config
+├── package.json                 # Dependencies & scripts
+└── bun.lock                     # Bun lockfile
 
 ```
+
+---
+
+## 🌐 Data Sources
+
+| Source | URL | Usage |
+|--------|-----|-------|
+| **Cosmos RPC** | `rpc.qie.onenov.xyz` | Consensus, validators, blocks |
+| **Cosmos REST** | `api.qie.onenov.xyz` | Staking, governance, balances |
+| **EVM RPC** | `rpc-evm.qie.onenov.xyz` | Blocks, transactions, gas |
+| **Subgraph** | `graphql.qie.digital` | QIEDEX pairs, prices, liquidity |
+| **Official API** | `mainnet.qie.digital/api/v2` | Stats, gas, tokens |
+| **Price Feed** | `api.coingecko.com` | QIE/USD price |
+| **Avatars** | `keybase.io` | Validator identities |
+
+---
+
+## 🔗 QIE Ecosystem Integration
+
+| Component | URL | Description |
+|-----------|-----|-------------|
+| **QIE Blockchain** | [qie.digital](https://www.qie.digital) | Official QIE website |
+| **QIE Wallet** | [qiewallet.me](https://qiewallet.me) | Official Web3 wallet |
+| **QIEDEX** | [dex.qie.digital](https://www.dex.qie.digital) | Decentralized exchange |
+| **QIE Bridge** | [bridge.qie.digital](https://bridge.qie.digital) | Cross-chain bridge |
+| **QIE Pass** | [qiepass.qie.digital](https://qiepass.qie.digital) | Web3 identity & KYC |
+| **QUSDC** | [stable.qie.digital](https://www.stable.qie.digital) | QIE stablecoin |
+| **QIElend** | [qielend.qie.digital](https://www.qielend.qie.digital) | Lending & borrowing |
+| **QIE Domains** | [domains.qie.digital](https://domains.qie.digital) | Web3 domains |
+| **QIE Lottery** | [lottery.qie.digital](https://lottery.qie.digital) | On-chain lottery |
+| **QIE Doodle** | [qiedoodle.com](https://qiedoodle.com) | NFT platform |
+| **QBots Trade** | [qbots.trade](https://www.qbots.trade) | Trading bots |
+| **Pawsome Host** | [pawsome.host](https://www.pawsome.host) | Hosting services |
+
+---
+
+## 🛡️ Smart Contracts
+
+| Contract | Address | Description |
+|----------|---------|-------------|
+| **QIEDEX Router** | `0x08cd2e72e156D8563B4351eb4065C262A9f553Ef` | DEX routing for swaps |
+| **QIEDEX Factory** | `0x8E23128a5511223bE6c0d64106e2D4508C08398C` | Pair creation |
+| **wQIE** | `0x0087904D95BEe9E5F24dc8852804b547981A9139` | Wrapped QIE token |
+| **wUSDC** | `0x0e93FAcc0a2cfD418403f3AD3EEfB5C8b2dfAec7` | Wrapped USDC |
+| **wUSDT** | `0xCB7bBC584475dce754a918ccD92FF6E0211f3CEE` | Wrapped USDT |
+| **QIDEX** | `0xA795c4D885522d5e37956265837636b023445871` | QIDEX governance token |
+| **QUSDC** | `0x3f43da82ec9a4f5285f10faf1f26eca7319e5da5` | QUSDC stablecoin |
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - [Bun](https://bun.sh/) (recommended) or Node.js 18+
 - Git
 
@@ -261,21 +341,32 @@ npx vercel deploy --prebuilt
 
 ---
 
-🌐 Live Demo
+📊 Live Demo
 
-[qie.explorer.onenov.xyz](https://qie.explorer.onenov.xyz)
+🌐 qie.explorer.onenov.xyz
 
 ---
 
-📊 Data Sources
+🧭 Quick Navigation
 
-Source Usage
-rpc.qie.onenov.xyz Cosmos RPC (consensus, validators, blocks)
-api.qie.onenov.xyz Cosmos REST (staking, governance, balances)
-rpc-evm.qie.onenov.xyz EVM RPC (blocks, transactions, gas)
-mainnet.qie.digital/api/v2 Official explorer API (stats, gas, tokens)
-api.coingecko.com Price feed (QIE/USD)
-keybase.io Validator avatars
+Section Path Description
+Dashboard /dashboard Live network overview
+Blocks /blocks Block explorer
+Transactions /transactions Transaction explorer
+Staking /staking Validator staking portal
+Governance /governance Proposal voting
+Uptime /uptime Validator uptime monitor
+Swap /swap Token swap with wrap/unwrap
+Pairs /pairs Trading pairs from QIEDEX
+Bridge /bridge Cross-chain bridge
+Gas Tracker /gas-tracker Gas price monitor
+Top Accounts /top-accounts Address leaderboard
+Tokens /tokens Token explorer
+Verified Contracts /verified-contracts Contract directory
+Consensus /consensus Consensus state
+IBC /ibc IBC monitor
+Parameters /parameters Chain parameters
+State Sync /statesync State sync config
 
 ---
 
@@ -301,9 +392,9 @@ This project is licensed under the MIT License — see the LICENSE file for deta
 
 OneNov
 
-· Website: [onenov.xyz](https://onenov.xyz)
-· Email: onenov0209@gmail.com
-· GitHub: @OneNov0209
+· 🌐 Website: onenov.xyz
+· 📧 Email: onenov0209@gmail.com
+· 🐙 GitHub: @OneNov0209
 
 ---
 
@@ -313,11 +404,12 @@ OneNov
 · TanStack — Amazing React framework ecosystem
 · shadcn/ui — Beautiful component library
 · Keplr — Cosmos wallet
+· MetaMask — EVM wallet
 · CoinGecko — Price data API
 · Vercel — Deployment platform
 
 ---
-```
+
 <div align="center">
   <sub>Built with ❤️ for the QIE Community</sub>
   <br>
