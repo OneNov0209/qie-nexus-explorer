@@ -87,7 +87,6 @@ function SwapPage() {
       return;
     }
 
-    // Wrap/Unwrap: 1:1
     if (isWrapPair) {
       setAmountOut(amountIn);
       return;
