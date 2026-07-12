@@ -137,7 +137,7 @@ export function WalletButton() {
               <img 
                 src={LOGOS.qie} 
                 alt="QIE Wallet" 
-                className="w-8 h-8 rounded-full object-cover"
+                className="w-8 h-8 rounded-full object-cover bg-white/10 p-0.5"
               />
               <div className="text-left">
                 <p className="text-sm font-medium">QIE Wallet</p>
@@ -152,7 +152,7 @@ export function WalletButton() {
               <img 
                 src={LOGOS.metamask} 
                 alt="MetaMask" 
-                className="w-8 h-8 rounded-full object-cover"
+                className="w-8 h-8 rounded-full object-cover bg-white/10 p-0.5"
               />
               <div className="text-left">
                 <p className="text-sm font-medium">MetaMask</p>
@@ -167,7 +167,7 @@ export function WalletButton() {
               <img 
                 src={LOGOS.keplr} 
                 alt="Keplr" 
-                className="w-8 h-8 rounded-full object-cover"
+                className="w-8 h-8 rounded-full object-cover bg-white/10 p-0.5"
               />
               <div className="text-left">
                 <p className="text-sm font-medium">Keplr</p>
