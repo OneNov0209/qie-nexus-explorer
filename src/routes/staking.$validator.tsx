@@ -86,20 +86,10 @@ function ValidatorDetail() {
       const commissionPool = totalTokens * comm;
       const outstandingRewards = commissionPool * 0.1;
 
-      const topDelegators = allVals
-        .sort((a: any, b: any) => Number(b.tokens) - Number(a.tokens))
-        .slice(0, 10)
-        .map((dv: any) => ({
-          name: dv.description?.moniker ?? shorten(dv.operator_address),
-          tokens: Number(dv.tokens) / 1e18,
-          address: dv.operator_address,
-          vp: bonded ? (Number(dv.tokens) / bonded) * 100 : 0,
-        }));
-
       return {
         v, vp, comm, maxComm, maxChange, minSelfDelegation,
         unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
-        selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators, allVals,
+        selfDelegationAmount, selfDelegationPct, bonded, info, allVals,
         operatorAddr, accountAddr, signerAddr, hexAddr,
         consensusPubkeyBase64, delegations, totalTokens,
       };
@@ -129,7 +119,7 @@ function ValidatorDetail() {
   const {
     v, vp, comm, maxComm, maxChange, minSelfDelegation,
     unbondingHeight, unbondingTime, outstandingRewards, commissionPool,
-    selfDelegationAmount, selfDelegationPct, bonded, info, topDelegators, allVals,
+    selfDelegationAmount, selfDelegationPct, bonded, info, allVals,
     operatorAddr, accountAddr, signerAddr, hexAddr,
     consensusPubkeyBase64, delegations, totalTokens,
   } = data;
@@ -154,6 +144,20 @@ function ValidatorDetail() {
     { name: "Self Delegated", value: selfDelegationAmount / 1e18 },
     { name: "From Delegators", value: Math.max(0, (totalTokens - selfDelegationAmount) / 1e18) },
   ];
+
+  // Handle click on address row
+  const handleAddressClick = (address: string, type: string) => {
+    if (!address) return;
+    // Redirect ke halaman yang sesuai
+    if (type === "account" || type === "delegator") {
+      window.location.href = `/account/${address}`;
+    } else if (type === "validator") {
+      window.location.href = `/staking/${address}`;
+    } else {
+      // Default: cari di explorer
+      window.open(`https://qie.explorer.onenov.xyz/account/${address}`, "_blank");
+    }
+  };
 
   return (
     <div className="space-y-6 pb-8">
@@ -230,13 +234,20 @@ function ValidatorDetail() {
             <table className="w-full text-sm">
               <thead><tr className="border-b border-border/60 bg-muted/30"><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Delegator</th><th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Amount</th><th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Shares</th></tr></thead>
               <tbody>
-                {delegations.sort((a: any, b: any) => Number(b.balance?.amount ?? 0) - Number(a.balance?.amount ?? 0)).map((d: any, i: number) => (
-                  <tr key={i} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
-                    <td className="p-3"><span className="font-mono text-xs text-muted-foreground">{shorten(d.delegation?.delegator_address ?? "", 12, 10)}</span></td>
-                    <td className="p-3 text-right tabular-nums"><span className="text-sm font-medium text-emerald-400">+ {formatQIE(d.balance?.amount ?? "0", 0)} {NETWORK.symbol}</span></td>
-                    <td className="p-3 text-right tabular-nums"><span className="text-xs text-muted-foreground">{Number(d.balance?.amount ?? 0) > 0 ? ((Number(d.balance.amount) / totalTokens) * 100).toFixed(2) + '%' : '—'}</span></td>
-                  </tr>
-                ))}
+                {delegations.sort((a: any, b: any) => Number(b.balance?.amount ?? 0) - Number(a.balance?.amount ?? 0)).map((d: any, i: number) => {
+                  const delegatorAddress = d.delegation?.delegator_address ?? "";
+                  return (
+                    <tr key={i} className="border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => handleAddressClick(delegatorAddress, "account")}>
+                      <td className="p-3">
+                        <span className="font-mono text-xs text-muted-foreground hover:text-violet-400 transition-colors">
+                          {shorten(delegatorAddress, 12, 10)}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right tabular-nums"><span className="text-sm font-medium text-emerald-400">+ {formatQIE(d.balance?.amount ?? "0", 0)} {NETWORK.symbol}</span></td>
+                      <td className="p-3 text-right tabular-nums"><span className="text-xs text-muted-foreground">{Number(d.balance?.amount ?? 0) > 0 ? ((Number(d.balance.amount) / totalTokens) * 100).toFixed(2) + '%' : '—'}</span></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -251,19 +262,6 @@ function ValidatorDetail() {
             <thead><tr className="border-b border-border/60 bg-muted/30"><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Height</th><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Hash</th><th className="text-left p-3 text-xs text-muted-foreground uppercase tracking-wider">Messages</th><th className="text-right p-3 text-xs text-muted-foreground uppercase tracking-wider">Time</th></tr></thead>
             <tbody><tr><td colSpan={4} className="p-8 text-center text-muted-foreground"><div className="flex flex-col items-center gap-2"><AlertTriangle className="w-8 h-8 opacity-30" /><p className="text-sm">Transaction search is not supported by this node.</p></div></td></tr></tbody>
           </table>
-        </div>
-      </Card>
-
-      {/* Top 10 */}
-      <Card>
-        <SectionTitle title="Top 10 Validators by Voting Power" />
-        <div className="space-y-2 mt-2">
-          {topDelegators.map((d: any, i: number) => (
-            <div key={d.address} className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted/30 transition-colors">
-              <div className="flex items-center gap-3"><span className={`w-6 h-6 rounded-md grid place-items-center text-xs font-bold ${i < 3 ? "bg-gradient-to-br from-amber-400/20 to-yellow-500/20 text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span><span className="text-sm">{d.name}</span></div>
-              <span className="text-xs tabular-nums">{formatQIE(d.tokens * 1e18, 0)} ({d.vp.toFixed(2)}%)</span>
-            </div>
-          ))}
         </div>
       </Card>
 
@@ -298,8 +296,20 @@ function ValidatorDetail() {
       <Card>
         <SectionTitle title="Addresses" icon={<Key className="w-5 h-5 text-amber-500" />} />
         <div className="space-y-3 mt-2">
-          <DetailRow label="Account Address" value={accountAddr} mono copy />
-          <DetailRow label="Operator Address" value={operatorAddr} mono copy />
+          <DetailRow 
+            label="Account Address" 
+            value={accountAddr} 
+            mono 
+            copy 
+            onClick={() => handleAddressClick(accountAddr, "account")}
+          />
+          <DetailRow 
+            label="Operator Address" 
+            value={operatorAddr} 
+            mono 
+            copy 
+            onClick={() => handleAddressClick(operatorAddr, "validator")}
+          />
           <DetailRow label="Hex Address" value={hexAddr} mono copy />
           <DetailRow label="Signer Address" value={signerAddr} mono copy />
           <DetailRow label="Consensus Public Key" value={consensusPubkeyBase64} mono copy />
@@ -325,9 +335,9 @@ function ValidatorDetail() {
   validatorIdentity={identity}
   validatorCommission={comm}
   validatorAPR={vp > 0 ? vp * (1 - comm) : 0}
-  userStake={Number(myStake)}          // raw aqie, jangan dibagi
-  userBalance={Number(userBalance)}    // raw aqie, jangan dibagi
-  userRewards={Number(myRewardQ)}      // raw aqie, jangan dibagi
+  userStake={Number(myStake)}
+  userBalance={Number(userBalance)}
+  userRewards={Number(myRewardQ)}
   allValidators={allVals
     .filter((x: any) => x.status === "BOND_STATUS_BONDED")
     .map((x: any) => ({
@@ -357,7 +367,32 @@ function StatusItem({ label, value, success, danger }: { label: string; value: s
   return (<div className="flex items-center justify-between p-3 rounded-lg bg-muted/30"><span className="text-xs text-muted-foreground">{label}</span><span className={`text-sm font-medium ${success ? "text-emerald-400" : danger ? "text-red-400" : ""}`}>{value}</span></div>);
 }
 
-function DetailRow({ label, value, mono, copy }: { label: string; value?: string; mono?: boolean; copy?: boolean }) {
+function DetailRow({ label, value, mono, copy, onClick }: { label: string; value?: string; mono?: boolean; copy?: boolean; onClick?: () => void }) {
   const [copied, setCopied] = useState(false);
-  return (<div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-2 border-b border-border/30 last:border-0"><dt className="text-xs text-muted-foreground uppercase tracking-wider sm:w-44 shrink-0">{label}</dt><dd className={`text-sm break-all flex-1 ${mono ? "font-mono text-xs" : ""}`}>{value ?? "—"}</dd>{copy && value && (<button onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="text-xs text-muted-foreground hover:text-violet-400 transition-colors shrink-0">{copied ? "Copied!" : "Copy"}</button>)}</div>);
+  const isClickable = !!onClick && value;
+  
+  return (
+    <div 
+      className={`flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-2 border-b border-border/30 last:border-0 ${isClickable ? 'cursor-pointer hover:bg-muted/10 transition-colors rounded-lg px-2 -mx-2' : ''}`}
+      onClick={isClickable ? onClick : undefined}
+    >
+      <dt className="text-xs text-muted-foreground uppercase tracking-wider sm:w-44 shrink-0">{label}</dt>
+      <dd className={`text-sm break-all flex-1 ${mono ? "font-mono text-xs" : ""} ${isClickable ? 'text-violet-400 hover:text-violet-300' : ''}`}>
+        {value ?? "—"}
+      </dd>
+      {copy && value && (
+        <button 
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            navigator.clipboard.writeText(value); 
+            setCopied(true); 
+            setTimeout(() => setCopied(false), 2000); 
+          }} 
+          className="text-xs text-muted-foreground hover:text-violet-400 transition-colors shrink-0"
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      )}
+    </div>
+  );
 }
