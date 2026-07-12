@@ -20,6 +20,11 @@ export async function getSigner() {
   return provider.getSigner();
 }
 
+export function getTokenDecimals(tokenAddress: string): number {
+  const token = TOKENS.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
+  return token?.decimals || 18;
+}
+
 export async function getTokenBalance(address: string, tokenAddress: string): Promise<string> {
   try {
     const provider = getProvider();
@@ -29,8 +34,8 @@ export async function getTokenBalance(address: string, tokenAddress: string): Pr
       provider
     );
     const balance = await erc20.balanceOf(address);
-    const token = TOKENS.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
-    return ethers.formatUnits(balance, token?.decimals || 18);
+    const decimals = getTokenDecimals(tokenAddress);
+    return ethers.formatUnits(balance, decimals);
   } catch {
     return "0";
   }
@@ -55,8 +60,8 @@ export async function getAllowance(owner: string, tokenAddress: string): Promise
       provider
     );
     const allowance = await erc20.allowance(owner, DEX_ROUTER);
-    const token = TOKENS.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
-    return ethers.formatUnits(allowance, token?.decimals || 18);
+    const decimals = getTokenDecimals(tokenAddress);
+    return ethers.formatUnits(allowance, decimals);
   } catch {
     return "0";
   }
@@ -69,8 +74,7 @@ export async function approveToken(tokenAddress: string, amount: string): Promis
     ["function approve(address spender, uint256 amount) returns (bool)"],
     signer
   );
-  const token = TOKENS.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
-  const decimals = token?.decimals || 18;
+  const decimals = getTokenDecimals(tokenAddress);
   const tx = await erc20.approve(DEX_ROUTER, ethers.parseUnits(amount, decimals));
   await tx.wait();
   return tx.hash;
@@ -107,13 +111,14 @@ export async function getQuote(
       provider
     );
     
-    const decimalsIn = TOKENS.find(t => t.address.toLowerCase() === tokenIn.toLowerCase())?.decimals || 18;
+    const decimalsIn = getTokenDecimals(tokenIn);
     const amount = ethers.parseUnits(amountIn, decimalsIn);
     const path = [tokenIn, tokenOut];
     const amounts = await router.getAmountsOut(amount, path);
-    const decimalsOut = TOKENS.find(t => t.address.toLowerCase() === tokenOut.toLowerCase())?.decimals || 18;
+    const decimalsOut = getTokenDecimals(tokenOut);
     return ethers.formatUnits(amounts[1], decimalsOut);
-  } catch {
+  } catch (error) {
+    console.error("getQuote error:", error);
     return "0";
   }
 }
@@ -136,8 +141,8 @@ export async function executeSwap(
   );
   
   const account = await signer.getAddress();
-  const decimalsIn = TOKENS.find(t => t.address.toLowerCase() === tokenIn.toLowerCase())?.decimals || 18;
-  const decimalsOut = TOKENS.find(t => t.address.toLowerCase() === tokenOut.toLowerCase())?.decimals || 18;
+  const decimalsIn = getTokenDecimals(tokenIn);
+  const decimalsOut = getTokenDecimals(tokenOut);
   const amount = ethers.parseUnits(amountIn, decimalsIn);
   
   const quote = await getQuote(amountIn, tokenIn, tokenOut);
