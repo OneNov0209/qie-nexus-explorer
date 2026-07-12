@@ -7,10 +7,11 @@ import {
   ChevronRight, Database, Mail, TrendingUp,
   BarChart3, PieChart, Clock, Radio, Sun, Moon,
   Wallet, FileCode2, RefreshCw, Settings2, Network as NetworkIcon,
-  Award, Gauge, ArrowRightLeft, CheckCircle
+  Award, Gauge, ArrowRightLeft, CheckCircle, Star, Rocket,
+  Blocks, Hash, Link2, Cpu, Cloud, Zap as ZapIcon
 } from "lucide-react";
-import { motion } from "framer-motion";
-import { useState, useEffect } from "react";
+import { motion, useScroll, useTransform, useInView } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cosmos, formatQIE } from "@/lib/api";
 import { AreaChart, Area, PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
@@ -114,6 +115,14 @@ function HomePage() {
   const [typedText, setTypedText] = useState("");
   const fullText = "The Gateway to QIE Blockchain";
   const { theme, toggle } = useTheme();
+  const containerRef = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end end"]
+  });
+
+  const heroScale = useTransform(scrollYProgress, [0, 0.2], [1, 0.95]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0.7]);
 
   useEffect(() => {
     let i = 0;
@@ -127,12 +136,12 @@ function HomePage() {
   }, []);
 
   const features = [
-    { icon: <Boxes className="w-6 h-6" />, title: "Block Explorer", desc: "Browse blocks, transactions, and addresses in real-time" },
-    { icon: <Users className="w-6 h-6" />, title: "Validator Network", desc: "Monitor validators, voting power, and uptime performance" },
-    { icon: <Coins className="w-6 h-6" />, title: "Staking Portal", desc: "Track delegations, rewards, and manage your staking portfolio" },
-    { icon: <Shield className="w-6 h-6" />, title: "Governance", desc: "Participate in on-chain proposals and network decisions" },
-    { icon: <GitBranch className="w-6 h-6" />, title: "IBC & Interchain", desc: "Explore cross-chain connections and IBC channels" },
-    { icon: <Activity className="w-6 h-6" />, title: "Network Health", desc: "Real-time consensus state and network parameters" },
+    { icon: <Boxes className="w-6 h-6" />, title: "Block Explorer", desc: "Browse blocks, transactions, and addresses in real-time", color: "from-violet-500 to-fuchsia-500" },
+    { icon: <Users className="w-6 h-6" />, title: "Validator Network", desc: "Monitor validators, voting power, and uptime performance", color: "from-blue-500 to-cyan-500" },
+    { icon: <Coins className="w-6 h-6" />, title: "Staking Portal", desc: "Track delegations, rewards, and manage your staking portfolio", color: "from-emerald-500 to-teal-500" },
+    { icon: <Shield className="w-6 h-6" />, title: "Governance", desc: "Participate in on-chain proposals and network decisions", color: "from-amber-500 to-orange-500" },
+    { icon: <GitBranch className="w-6 h-6" />, title: "IBC & Interchain", desc: "Explore cross-chain connections and IBC channels", color: "from-cyan-500 to-blue-500" },
+    { icon: <Activity className="w-6 h-6" />, title: "Network Health", desc: "Real-time consensus state and network parameters", color: "from-rose-500 to-pink-500" },
   ];
 
   const ecosystemFeatures = [
@@ -169,16 +178,40 @@ function HomePage() {
     { name: "Liquid", value: Math.max(0, Number(stats.supply) / 1e18 - Number(stats.bonded) / 1e18) },
   ].filter(d => d.value > 0) : [];
 
+  // Animation variants
+  const fadeInUp = {
+    hidden: { opacity: 0, y: 60 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: "easeOut" } }
+  };
+
+  const fadeInLeft = {
+    hidden: { opacity: 0, x: -60 },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: "easeOut" } }
+  };
+
+  const fadeInRight = {
+    hidden: { opacity: 0, x: 60 },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: "easeOut" } }
+  };
+
+  const scaleUp = {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: { opacity: 1, scale: 1, transition: { duration: 0.7, ease: "easeOut" } }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" ref={containerRef}>
       {/* HERO */}
-      <section className="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-20 flex-1 flex items-center">
+      <motion.section 
+        style={{ scale: heroScale, opacity: heroOpacity }}
+        className="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-20 flex-1 flex items-center"
+      >
         <div className="absolute inset-0">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-violet-500/20 via-fuchsia-500/10 to-transparent rounded-full blur-3xl opacity-60" />
-          <div className="absolute bottom-0 right-0 w-[600px] h-[400px] bg-gradient-to-t from-cyan-500/10 to-transparent rounded-full blur-3xl opacity-40" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-violet-500/20 via-fuchsia-500/10 to-transparent rounded-full blur-3xl opacity-60 animate-pulse-slow" />
+          <div className="absolute bottom-0 right-0 w-[600px] h-[400px] bg-gradient-to-t from-cyan-500/10 to-transparent rounded-full blur-3xl opacity-40 animate-pulse-slower" />
           <div className="absolute top-20 left-10 w-[300px] h-[300px] bg-gradient-to-r from-amber-500/5 to-transparent rounded-full blur-3xl" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black,transparent)]" />
         </div>
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black,transparent)]" />
         <div className="absolute top-4 right-4 z-10">
           <button type="button" onClick={toggle} aria-label="Toggle theme" className="relative glass rounded-full w-14 h-8 flex items-center transition hover:ring-2 hover:ring-primary/40">
             <span className={`absolute top-1 left-1 w-6 h-6 rounded-full grid place-items-center bg-gradient-to-br from-primary to-accent text-white transition-transform shadow-md ${theme === "light" ? "translate-x-6" : ""}`}>
@@ -187,65 +220,135 @@ function HomePage() {
           </button>
         </div>
         <div className="relative container mx-auto px-4 text-center">
-          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }} className="mb-8">
-            <img src={NETWORK.logo} alt="QIE Blockchain" className="w-20 h-20 md:w-24 md:h-24 rounded-full mx-auto ring-4 ring-violet-500/30 shadow-2xl shadow-violet-500/20" />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ duration: 0.8, type: "spring", bounce: 0.4 }}
+            className="mb-8"
+          >
+            <div className="relative inline-block">
+              <div className="absolute inset-0 rounded-full bg-violet-500/20 blur-2xl animate-pulse-slow" />
+              <img src={NETWORK.logo} alt="QIE Blockchain" className="w-20 h-20 md:w-24 md:h-24 rounded-full mx-auto ring-4 ring-violet-500/30 shadow-2xl shadow-violet-500/20 relative z-10" />
+            </div>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 mb-8 shadow-lg shadow-emerald-500/10">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 mb-8 shadow-lg shadow-emerald-500/10"
+          >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" /><span className="text-sm text-emerald-400 font-medium">QIE Mainnet Live</span><span className="text-xs text-muted-foreground">Chain ID: {NETWORK.chainId}</span>
           </motion.div>
-          <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }} className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
+          <motion.h1 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.3 }}
+            className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6"
+          >
             <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">{typedText}</span><span className="animate-blink text-violet-400">|</span>
           </motion.h1>
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }} className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+          <motion.p 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.5 }}
+            className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8"
+          >
             A powerful hybrid blockchain explorer supporting both Cosmos SDK and Ethereum Virtual Machine. Explore blocks, stake with validators, and participate in governance — all in one place.
           </motion.p>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.5 }} className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/dashboard" className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-lg shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-105 transition-all duration-300 border-b-4 border-violet-700/50 active:border-b-0 active:translate-y-1">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.7 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+          >
+            <Link to="/dashboard" className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-lg shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-105 transition-all duration-300 border-b-4 border-violet-700/50 active:border-b-0 active:translate-y-1 overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
               <Activity className="w-5 h-5 group-hover:animate-pulse" />Launch Explorer<ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <a href="https://www.qie.digital/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-6 py-4 rounded-2xl border-2 border-border/60 bg-card/50 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:border-violet-500/30 transition-all duration-300 shadow-lg hover:shadow-xl">
               <Globe className="w-4 h-4" />Learn About QIE<ExternalLink className="w-3 h-3" />
             </a>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.7 }} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto mt-14">
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.9 }}
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto mt-14"
+          >
             {stats_cards.map((s, i) => (
-              <div key={s.label} className={`relative group rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-4 hover:border-violet-500/30 transition-all duration-300 shadow-lg hover:shadow-xl ${s.shadow}`}>
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.color} grid place-items-center mx-auto mb-2 shadow-lg border-b-2 border-black/20`}>{s.icon}</div>
+              <motion.div 
+                key={s.label} 
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 1 + i * 0.1 }}
+                whileHover={{ y: -8, scale: 1.03, transition: { duration: 0.2 } }}
+                className={`relative group rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-4 hover:border-violet-500/30 transition-all duration-300 shadow-lg hover:shadow-xl ${s.shadow} hover:shadow-2xl`}
+              >
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.color} grid place-items-center mx-auto mb-2 shadow-lg border-b-2 border-black/20 group-hover:scale-110 transition-transform`}>{s.icon}</div>
                 <p className="text-lg font-bold tabular-nums">{s.value}</p>
                 {s.sub && <p className={`text-xs font-medium ${s.positive ? 'text-emerald-400' : s.sub.startsWith('-') ? 'text-red-400' : 'text-muted-foreground'}`}>{s.sub}</p>}
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
-              </div>
+              </motion.div>
             ))}
           </motion.div>
         </div>
-      </section>
+      </motion.section>
 
       {/* QUICK LINKS */}
-      <section className="relative py-8">
+      <motion.section 
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-100px" }}
+        variants={fadeInUp}
+        className="relative py-8"
+      >
         <div className="container mx-auto px-4">
           <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
-            {quickLinks.map((link) => (
-              <Link key={link.label} to={link.href} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm text-xs font-medium text-muted-foreground hover:text-foreground hover:border-violet-500/30 hover:bg-card/60 transition-all duration-300 shadow-sm hover:shadow-md">
-                {link.icon}
-                {link.label}
-              </Link>
+            {quickLinks.map((link, i) => (
+              <motion.div
+                key={link.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: i * 0.05 }}
+                whileHover={{ scale: 1.05 }}
+              >
+                <Link to={link.href} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm text-xs font-medium text-muted-foreground hover:text-foreground hover:border-violet-500/30 hover:bg-card/60 transition-all duration-300 shadow-sm hover:shadow-md">
+                  {link.icon}
+                  {link.label}
+                </Link>
+              </motion.div>
             ))}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* CHARTS */}
       <section className="relative py-16 md:py-20">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto mb-6">
-            <ChartCard3D icon={<PieChart className="w-5 h-5 text-violet-400" />} title="Staking Distribution" delay={0}>
+            <ChartCard3D 
+              icon={<PieChart className="w-5 h-5 text-violet-400" />} 
+              title="Staking Distribution" 
+              delay={0}
+              direction="up"
+            >
               <div className="h-44"><ResponsiveContainer width="100%" height="100%"><RePieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value" strokeWidth={0}>{pieData.map((_, i) => (<Cell key={i} fill={CHART_COLORS[i]} />))}</Pie><Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} /></RePieChart></ResponsiveContainer></div>
               <div className="flex justify-center gap-4 mt-2">{pieData.map((d, i) => (<div key={d.name} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm shadow-sm" style={{ background: CHART_COLORS[i] }} /><span className="text-[11px] text-muted-foreground">{d.name}</span></div>))}</div>
             </ChartCard3D>
-            <ChartCard3D icon={<TrendingUp className="w-5 h-5 text-cyan-400" />} title="Top Validators Power" delay={0.1}>
+            <ChartCard3D 
+              icon={<TrendingUp className="w-5 h-5 text-cyan-400" />} 
+              title="Top Validators Power" 
+              delay={0.1}
+              direction="down"
+            >
               <div className="h-44">{stats?.topValidators?.length ? (<ResponsiveContainer width="100%" height="100%"><AreaChart data={stats.topValidators} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}><defs><linearGradient id="homeAreaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.4} /><stop offset="95%" stopColor="#D946EF" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} /><YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={40} /><Area type="monotone" dataKey="power" stroke="#8B5CF6" strokeWidth={2} fill="url(#homeAreaGrad)" dot={false} /></AreaChart></ResponsiveContainer>) : (<div className="h-full grid place-items-center text-xs text-muted-foreground">Loading...</div>)}</div>
             </ChartCard3D>
-            <ChartCard3D icon={<Radio className="w-5 h-5 text-amber-400" />} title="Network Pulse" delay={0.2}>
+            <ChartCard3D 
+              icon={<Radio className="w-5 h-5 text-amber-400" />} 
+              title="Network Pulse" 
+              delay={0.2}
+              direction="left"
+            >
               <div className="space-y-4">
                 <ProgressBar label="Peers" value={stats?.peers || 0} max={50} color="from-cyan-500 to-blue-500" textColor="text-cyan-400" />
                 <ProgressBar label="Active Validators" value={stats?.activeVals || 0} max={stats?.validators || 1} color="from-emerald-500 to-teal-500" textColor="text-emerald-400" />
@@ -256,52 +359,202 @@ function HomePage() {
           </div>
 
           {/* Price Chart */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} viewport={{ once: true }} className="relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300 max-w-6xl mx-auto shadow-lg hover:shadow-xl">
+          <motion.div 
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-50px" }}
+            variants={fadeInUp}
+            className="relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300 max-w-6xl mx-auto shadow-lg hover:shadow-xl"
+          >
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-5 h-5 text-amber-400" /><div><h3 className="font-semibold text-sm">QIE Price</h3><div className="flex items-center gap-2"><span className="text-lg font-bold">${price?.usd?.toFixed(4) || "—"}</span>{price?.usd_24h_change && <span className={`text-xs font-medium ${price.usd_24h_change > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{price.usd_24h_change > 0 ? '↑' : '↓'} {Math.abs(price.usd_24h_change).toFixed(2)}%</span>}{price?.usd_24h_vol && <span className="text-xs text-muted-foreground ml-2">Vol: ${(price.usd_24h_vol / 1e6).toFixed(2)}M</span>}</div></div>
+                <div className="p-2 rounded-xl bg-amber-500/10">
+                  <TrendingUp className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">QIE Price</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold">${price?.usd?.toFixed(4) || "—"}</span>
+                    {price?.usd_24h_change && (
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${price.usd_24h_change > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {price.usd_24h_change > 0 ? '↑' : '↓'} {Math.abs(price.usd_24h_change).toFixed(2)}%
+                      </span>
+                    )}
+                    {price?.usd_24h_vol && <span className="text-xs text-muted-foreground ml-2">Vol: ${(price.usd_24h_vol / 1e6).toFixed(2)}M</span>}
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-1 bg-muted/30 rounded-xl p-1 border border-border/40">
-                {PERIODS.map((p) => (<button key={p.key} onClick={() => setPeriod(p.key)} className={`px-3 py-1.5 text-xs rounded-lg transition-all ${period === p.key ? "bg-violet-500 text-white shadow-md" : "text-muted-foreground hover:text-foreground"}`}>{p.label}</button>))}
+                {PERIODS.map((p) => (
+                  <button 
+                    key={p.key} 
+                    onClick={() => setPeriod(p.key)} 
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-all ${period === p.key ? "bg-violet-500 text-white shadow-md" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="h-64">
-              {chartData?.length ? (<ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}><defs><linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4} /><stop offset="95%" stopColor="#F59E0B" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} opacity={0.3} /><XAxis dataKey={["1", "7"].includes(period) ? "time" : "date"} tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} interval="preserveStartEnd" /><YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={50} /><Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(v: any) => `$${Number(v).toFixed(6)}`} /><Area type="monotone" dataKey="price" stroke="#F59E0B" strokeWidth={2} fill="url(#priceGrad)" dot={false} /></AreaChart></ResponsiveContainer>) : (<div className="h-full grid place-items-center text-xs text-muted-foreground">Loading chart...</div>)}
+              {chartData?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                    <XAxis dataKey={["1", "7"].includes(period) ? "time" : "date"} tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={50} />
+                    <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(v: any) => `$${Number(v).toFixed(6)}`} />
+                    <Area type="monotone" dataKey="price" stroke="#F59E0B" strokeWidth={2} fill="url(#priceGrad)" dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full grid place-items-center text-xs text-muted-foreground">Loading chart...</div>
+              )}
             </div>
           </motion.div>
         </div>
       </section>
 
       {/* FEATURES */}
-      <section className="relative py-16 md:py-24"><div className="container mx-auto px-4"><div className="text-center mb-12"><h2 className="text-3xl md:text-4xl font-bold mb-4"><span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Everything You Need</span></h2><p className="text-muted-foreground max-w-xl mx-auto">A complete blockchain explorer with powerful tools for developers, validators, and delegators.</p></div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">{features.map((f, i) => (<motion.div key={f.title} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: i * 0.1 }} viewport={{ once: true }} className="group relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-6 hover:border-violet-500/20 hover:shadow-xl hover:shadow-violet-500/5 transition-all duration-300 shadow-lg"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center mb-4 text-violet-400 group-hover:scale-110 transition-transform border border-violet-500/20 shadow-md">{f.icon}</div><h3 className="font-bold text-lg mb-2">{f.title}</h3><p className="text-sm text-muted-foreground">{f.desc}</p></motion.div>))}</div></div></section>
-
-      {/* ECOSYSTEM */}
-      <section className="relative py-16 md:py-20 bg-muted/20">
+      <section className="relative py-16 md:py-24">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4"><span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">QIE Ecosystem</span></h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">Explore the growing ecosystem of applications and services built on QIE</p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto">
-            {ecosystemFeatures.map((item) => (
-              <a
-                key={item.title}
-                href={item.href}
-                target="_blank"
-                rel="noreferrer"
-                className="group rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4 text-center hover:border-violet-500/30 hover:bg-card/60 transition-all duration-300 shadow-sm hover:shadow-md hover:scale-105"
-              >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20 grid place-items-center mx-auto mb-2 text-violet-400 group-hover:scale-110 transition-transform">{item.icon}</div>
-                <div className="text-xs font-medium">{item.title}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">{item.desc}</div>
-              </a>
+          <motion.div 
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-50px" }}
+            variants={fadeInUp}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Everything You Need</span>
+            </h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">A complete blockchain explorer with powerful tools for developers, validators, and delegators.</p>
+          </motion.div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {features.map((f, i) => (
+              <FeatureCard 
+                key={f.title} 
+                icon={f.icon} 
+                title={f.title} 
+                desc={f.desc} 
+                color={f.color}
+                delay={i * 0.1}
+                index={i}
+              />
             ))}
           </div>
         </div>
       </section>
 
+      {/* ECOSYSTEM */}
+      <motion.section 
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-50px" }}
+        variants={fadeInUp}
+        className="relative py-16 md:py-20 bg-muted/20"
+      >
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <motion.h2 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="text-3xl md:text-4xl font-bold mb-4"
+            >
+              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">QIE Ecosystem</span>
+            </motion.h2>
+            <motion.p 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="text-muted-foreground max-w-xl mx-auto"
+            >
+              Explore the growing ecosystem of applications and services built on QIE
+            </motion.p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto">
+            {ecosystemFeatures.map((item, i) => (
+              <motion.a
+                key={item.title}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                whileHover={{ y: -8, scale: 1.05 }}
+                viewport={{ once: true }}
+                className="group rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4 text-center hover:border-violet-500/30 hover:bg-card/60 transition-all duration-300 shadow-sm hover:shadow-md"
+              >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20 grid place-items-center mx-auto mb-2 text-violet-400 group-hover:scale-110 transition-transform">{item.icon}</div>
+                <div className="text-xs font-medium">{item.title}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{item.desc}</div>
+              </motion.a>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+
       {/* CTA */}
-      <section className="relative py-16 md:py-24"><div className="container mx-auto px-4"><div className="relative rounded-3xl overflow-hidden border-2 border-violet-500/20 shadow-2xl shadow-violet-500/10"><div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 via-fuchsia-500/10 to-cyan-500/10" /><div className="absolute top-0 right-0 w-[400px] h-[400px] bg-gradient-to-bl from-violet-500/20 to-transparent rounded-full blur-3xl" /><div className="relative p-8 md:p-12 text-center"><Sparkles className="w-12 h-12 text-violet-400 mx-auto mb-4" /><h2 className="text-2xl md:text-4xl font-bold mb-4">Ready to <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Explore QIE?</span></h2><p className="text-muted-foreground max-w-lg mx-auto mb-8">Dive into the QIE blockchain. Monitor blocks, track transactions, stake with validators, and shape the future of the network.</p><Link to="/dashboard" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-lg shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-105 transition-all duration-300 border-b-4 border-violet-700/50 active:border-b-0 active:translate-y-1"><Zap className="w-5 h-5" />View Explorer<ChevronRight className="w-5 h-5" /></Link></div></div></div></section>
+      <motion.section 
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-50px" }}
+        variants={scaleUp}
+        className="relative py-16 md:py-24"
+      >
+        <div className="container mx-auto px-4">
+          <div className="relative rounded-3xl overflow-hidden border-2 border-violet-500/20 shadow-2xl shadow-violet-500/10">
+            <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 via-fuchsia-500/10 to-cyan-500/10" />
+            <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-gradient-to-bl from-violet-500/20 to-transparent rounded-full blur-3xl animate-pulse-slow" />
+            <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-gradient-to-tr from-cyan-500/10 to-transparent rounded-full blur-3xl animate-pulse-slower" />
+            <div className="relative p-8 md:p-12 text-center">
+              <motion.div
+                initial={{ scale: 0, rotate: -20 }}
+                whileInView={{ scale: 1, rotate: 0 }}
+                transition={{ duration: 0.7, type: "spring", bounce: 0.4 }}
+                viewport={{ once: true }}
+              >
+                <Sparkles className="w-12 h-12 text-violet-400 mx-auto mb-4" />
+              </motion.div>
+              <motion.h2 
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="text-2xl md:text-4xl font-bold mb-4"
+              >
+                Ready to <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Explore QIE?</span>
+              </motion.h2>
+              <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="text-muted-foreground max-w-lg mx-auto mb-8"
+              >
+                Dive into the QIE blockchain. Monitor blocks, track transactions, stake with validators, and shape the future of the network.
+              </motion.p>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.4 }}
+                whileHover={{ scale: 1.05 }}
+              >
+                <Link to="/dashboard" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-lg shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/50 transition-all duration-300 border-b-4 border-violet-700/50 active:border-b-0 active:translate-y-1 overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  <Zap className="w-5 h-5" />View Explorer<ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </motion.div>
+            </div>
+          </div>
+        </div>
+      </motion.section>
 
       {/* FOOTER */}
       <footer className="mt-auto border-t-2 border-border/60 bg-background/40 backdrop-blur-xl">
@@ -335,8 +588,63 @@ function HomePage() {
   );
 }
 
-function ChartCard3D({ icon, title, children, delay }: { icon: React.ReactNode; title: string; children: React.ReactNode; delay: number }) {
-  return (<motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay }} viewport={{ once: true }} className="relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300 shadow-lg hover:shadow-xl"><div className="flex items-center gap-2 mb-3">{icon}<h3 className="font-semibold text-sm">{title}</h3></div>{children}</motion.div>);
+function ChartCard3D({ icon, title, children, delay, direction = "up" }: { icon: React.ReactNode; title: string; children: React.ReactNode; delay: number; direction?: "up" | "down" | "left" | "right" }) {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-50px" });
+  
+  const variants = {
+    up: { hidden: { opacity: 0, y: 60 }, visible: { opacity: 1, y: 0 } },
+    down: { hidden: { opacity: 0, y: -60 }, visible: { opacity: 1, y: 0 } },
+    left: { hidden: { opacity: 0, x: -60 }, visible: { opacity: 1, x: 0 } },
+    right: { hidden: { opacity: 0, x: 60 }, visible: { opacity: 1, x: 0 } },
+  };
+
+  return (
+    <motion.div 
+      ref={ref}
+      initial="hidden"
+      animate={isInView ? "visible" : "hidden"}
+      variants={variants[direction]}
+      transition={{ duration: 0.6, delay }}
+      whileHover={{ y: -5, scale: 1.02, transition: { duration: 0.2 } }}
+      className="relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-5 hover:border-violet-500/20 transition-all duration-300 shadow-lg hover:shadow-xl"
+    >
+      <div className="flex items-center gap-2 mb-3">{icon}<h3 className="font-semibold text-sm">{title}</h3></div>
+      {children}
+    </motion.div>
+  );
+}
+
+function FeatureCard({ icon, title, desc, color, delay, index }: { icon: React.ReactNode; title: string; desc: string; color: string; delay: number; index: number }) {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-50px" });
+  
+  const directions = ["up", "left", "right", "up", "left", "right"];
+  const direction = directions[index % directions.length] as "up" | "left" | "right";
+  
+  const variants = {
+    up: { hidden: { opacity: 0, y: 60 }, visible: { opacity: 1, y: 0 } },
+    left: { hidden: { opacity: 0, x: -60 }, visible: { opacity: 1, x: 0 } },
+    right: { hidden: { opacity: 0, x: 60 }, visible: { opacity: 1, x: 0 } },
+  };
+
+  return (
+    <motion.div 
+      ref={ref}
+      initial="hidden"
+      animate={isInView ? "visible" : "hidden"}
+      variants={variants[direction]}
+      transition={{ duration: 0.6, delay }}
+      whileHover={{ y: -8, scale: 1.03, transition: { duration: 0.2 } }}
+      className="group relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-6 hover:border-violet-500/20 hover:shadow-xl hover:shadow-violet-500/5 transition-all duration-300 shadow-lg"
+    >
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-transparent to-transparent group-hover:from-violet-500/5 group-hover:to-fuchsia-500/5 transition-all duration-500" />
+      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color}/20 grid place-items-center mb-4 text-violet-400 group-hover:scale-110 transition-transform border border-violet-500/20 shadow-md`}>{icon}</div>
+      <h3 className="font-bold text-lg mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground">{desc}</p>
+      <div className={`absolute bottom-0 left-0 h-1 bg-gradient-to-r ${color} w-0 group-hover:w-full transition-all duration-500 rounded-b-2xl`} />
+    </motion.div>
+  );
 }
 
 function ProgressBar({ label, value, max, color, textColor, suffix }: { label: string; value: number; max: number; color: string; textColor: string; suffix?: string }) {
