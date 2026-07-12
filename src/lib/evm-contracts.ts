@@ -1,6 +1,12 @@
 import { ethers } from "ethers";
-import { TOKENS, DEX_ROUTER } from "@/data/tokens";
+import { TOKENS, DEX_ROUTER, WQIE_ADDRESS } from "@/data/tokens";
 import { NETWORK } from "@/data/network";
+
+const WQIE_ABI = [
+  "function deposit() payable",
+  "function withdraw(uint256 amount)",
+  "function balanceOf(address owner) view returns (uint256)",
+];
 
 export function getProvider() {
   return new ethers.JsonRpcProvider(NETWORK.evmRpc);
@@ -68,6 +74,24 @@ export async function approveToken(tokenAddress: string, amount: string): Promis
   const tx = await erc20.approve(DEX_ROUTER, ethers.parseUnits(amount, decimals));
   await tx.wait();
   return tx.hash;
+}
+
+export async function wrapQIE(amount: string): Promise<{ hash: string }> {
+  const signer = await getSigner();
+  const wqie = new ethers.Contract(WQIE_ADDRESS, WQIE_ABI, signer);
+  const amountWei = ethers.parseEther(amount);
+  const tx = await wqie.deposit({ value: amountWei });
+  const receipt = await tx.wait();
+  return { hash: receipt.hash };
+}
+
+export async function unwrapQIE(amount: string): Promise<{ hash: string }> {
+  const signer = await getSigner();
+  const wqie = new ethers.Contract(WQIE_ADDRESS, WQIE_ABI, signer);
+  const amountWei = ethers.parseEther(amount);
+  const tx = await wqie.withdraw(amountWei);
+  const receipt = await tx.wait();
+  return { hash: receipt.hash };
 }
 
 export async function getQuote(
