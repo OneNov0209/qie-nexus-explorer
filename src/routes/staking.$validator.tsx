@@ -150,7 +150,7 @@ function ValidatorDetail() {
     if (!address) return;
     // Redirect ke halaman yang sesuai
     if (type === "account" || type === "delegator") {
-      window.location.href = `/account/${address}`;
+      window.location.href = `/address/${address}`;
     } else if (type === "validator") {
       window.location.href = `/staking/${address}`;
     } else {
