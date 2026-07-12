@@ -347,26 +347,32 @@ npx vercel deploy --prebuilt
 
 ---
 
-🧭 Quick Navigation
+## 🧭 Quick Navigation
 
-Section Path Description
-Dashboard /dashboard Live network overview
-Blocks /blocks Block explorer
-Transactions /transactions Transaction explorer
-Staking /staking Validator staking portal
-Governance /governance Proposal voting
-Uptime /uptime Validator uptime monitor
-Swap /swap Token swap with wrap/unwrap
-Pairs /pairs Trading pairs from QIEDEX
-Bridge /bridge Cross-chain bridge
-Gas Tracker /gas-tracker Gas price monitor
-Top Accounts /top-accounts Address leaderboard
-Tokens /tokens Token explorer
-Verified Contracts /verified-contracts Contract directory
-Consensus /consensus Consensus state
-IBC /ibc IBC monitor
-Parameters /parameters Chain parameters
-State Sync /statesync State sync config
+| Section | Path | Description |
+|---------|------|-------------|
+| **Dashboard** | `/dashboard` | Live network overview with real-time stats |
+| **Blocks** | `/blocks` | Block explorer with latest blocks |
+| **Transactions** | `/transactions` | Transaction explorer with search |
+| **Staking** | `/staking` | Validator staking portal |
+| **Governance** | `/governance` | Proposal voting dashboard |
+| **Uptime** | `/uptime` | Validator uptime monitor |
+| **Swap** | `/swap` | Token swap with wrap/unwrap support |
+| **Pairs** | `/pairs` | Trading pairs from QIEDEX Subgraph |
+| **Bridge** | `/bridge` | Cross-chain bridge interface |
+| **Gas Tracker** | `/gas-tracker` | Live gas price monitor |
+| **Top Accounts** | `/top-accounts` | Address leaderboard by balance |
+| **Tokens** | `/tokens` | Token explorer (ERC-20, ERC-721, ERC-1155) |
+| **Token Transfers** | `/token-transfers` | Real-time token transfer history |
+| **Verified Contracts** | `/verified-contracts` | Smart contract directory |
+| **Internal TXs** | `/internal-txs` | Internal transaction tracing |
+| **Consensus** | `/consensus` | Consensus state monitor |
+| **IBC** | `/ibc` | IBC channels, connections, clients |
+| **Parameters** | `/parameters` | Chain parameters viewer |
+| **CosmWasm** | `/cosmwasm` | CosmWasm smart contract status |
+| **State Sync** | `/statesync` | State sync configuration |
+| **Supply** | `/supply` | Token supply information |
+| **Widgets** | `/widgets` | Widgets and components showcase |
 
 ---
 
