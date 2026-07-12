@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWallet } from "@/lib/wallet";
-import { TOKENS, Token } from "@/data/tokens";
+import { TOKENS, Token, WQIE_ADDRESS } from "@/data/tokens";
 import { getPairPrice } from "@/lib/subgraph";
 import { Card, SectionTitle } from "@/components/ui/primitives";
 import { ChevronDown, ArrowUpDown, Loader2, Settings, AlertCircle } from "lucide-react";
@@ -113,23 +113,97 @@ function SwapPage() {
 
     setIsLoading(true);
     try {
-      // Cek allowance untuk token non-native
-      if (!tokenIn.isNative) {
-        const { getAllowance, approveToken } = await import("@/lib/evm-contracts");
+      const { executeSwap, wrapQIE, unwrapQIE, getAllowance, approveToken } = await import("@/lib/evm-contracts");
+
+      // Case 1: QIE → wQIE (Wrap)
+      if (tokenIn.isNative && tokenOut.address === WQIE_ADDRESS) {
+        await wrapQIE(amountIn);
+        toast.success("QIE wrapped to wQIE!");
+        setAmountIn("");
+        setAmountOut("");
+        await fetchBalances();
+        setIsLoading(false);
+        return;
+      }
+
+      // Case 2: wQIE → QIE (Unwrap)
+      if (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative) {
+        await unwrapQIE(amountIn);
+        toast.success("wQIE unwrapped to QIE!");
+        setAmountIn("");
+        setAmountOut("");
+        await fetchBalances();
+        setIsLoading(false);
+        return;
+      }
+
+      // Case 3: Native QIE → Other token (Auto-wrap + Swap)
+      if (tokenIn.isNative && !tokenOut.isNative && tokenOut.address !== WQIE_ADDRESS) {
+        toast.info("Wrapping QIE to wQIE first...");
+        await wrapQIE(amountIn);
+        toast.success("QIE wrapped to wQIE! Proceeding to swap...");
+        
+        // Update tokenIn to wQIE for swap
+        const wqieToken = TOKENS.find(t => t.address === WQIE_ADDRESS);
+        if (!wqieToken) throw new Error("wQIE token not found");
+        
+        const { executeSwap: swapAfterWrap } = await import("@/lib/evm-contracts");
+        const result = await swapAfterWrap(amountIn, WQIE_ADDRESS, tokenOut.address, slippage);
+        toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
+        setAmountIn("");
+        setAmountOut("");
+        await fetchBalances();
+        setIsLoading(false);
+        return;
+      }
+
+      // Case 4: Other token → Native QIE (Swap + Auto-unwrap)
+      if (!tokenIn.isNative && tokenOut.isNative && tokenIn.address !== WQIE_ADDRESS) {
+        toast.info("Swapping to wQIE first...");
+        
+        // Check allowance
         const allowance = await getAllowance(address, tokenIn.address);
         if (Number(allowance) < Number(amountIn)) {
           toast.info("Approving token...");
           await approveToken(tokenIn.address, amountIn);
           toast.success("Token approved!");
         }
+        
+        // Swap to wQIE first
+        const { executeSwap: swapToWQIE } = await import("@/lib/evm-contracts");
+        const result = await swapToWQIE(amountIn, tokenIn.address, WQIE_ADDRESS, slippage);
+        
+        toast.info("Unwrapping wQIE to QIE...");
+        await unwrapQIE(amountIn);
+        toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
+        setAmountIn("");
+        setAmountOut("");
+        await fetchBalances();
+        setIsLoading(false);
+        return;
       }
 
-      const { executeSwap } = await import("@/lib/evm-contracts");
-      const result = await executeSwap(amountIn, tokenIn.address, tokenOut.address, slippage);
-      toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
-      setAmountIn("");
-      setAmountOut("");
-      await fetchBalances();
+      // Case 5: Regular token-to-token swap (including wQIE)
+      if (!tokenIn.isNative && !tokenOut.isNative) {
+        const allowance = await getAllowance(address, tokenIn.address);
+        if (Number(allowance) < Number(amountIn)) {
+          toast.info("Approving token...");
+          await approveToken(tokenIn.address, amountIn);
+          toast.success("Token approved!");
+        }
+
+        const result = await executeSwap(amountIn, tokenIn.address, tokenOut.address, slippage);
+        toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
+        setAmountIn("");
+        setAmountOut("");
+        await fetchBalances();
+        setIsLoading(false);
+        return;
+      }
+
+      // Fallback: should never reach here
+      toast.error("Unsupported swap pair");
+
     } catch (error: any) {
       toast.error("Swap failed", { description: error.message });
     } finally {
@@ -302,7 +376,7 @@ function SwapPage() {
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
             {isLoading 
-              ? "Swapping..." 
+              ? "Processing..." 
               : Number(amountIn) > Number(balanceIn)
                 ? "Insufficient balance"
                 : !pairData && amountIn 
@@ -311,7 +385,7 @@ function SwapPage() {
           </button>
 
           <div className="mt-3 text-center text-[10px] text-muted-foreground">
-            ⚠️ Swap is currently in simulation mode. Router address needed for live transactions.
+            ⚠️ Auto-wrap/unwrap supported for QIE ↔ wQIE
           </div>
         </Card>
       </motion.div>
