@@ -7,7 +7,7 @@ import { shorten } from "@/lib/api";
 const LOGOS = {
   qie: "https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/qie-logo.png",
   metamask: "https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/metamask.png",
-  keplr: "https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/keplr.png",
+  keplr: "https://raw.githubusercontent.com/OneNov0209/logo/refs/heads/main/keplr.jpg",
 };
 
 export function WalletButton() {
