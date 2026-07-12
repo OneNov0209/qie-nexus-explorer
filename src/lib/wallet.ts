@@ -40,6 +40,109 @@ declare global {
   }
 }
 
+// DETEKSI QIE WALLET
+function detectQieWallet(): any {
+  if (typeof window === "undefined") return null;
+  
+  // QIE Wallet mengekspos window.qie dan window.ethereum
+  if (window.qie) {
+    return window.qie;
+  }
+  
+  
+  if (window.ethereum) {
+    
+    if (window.ethereum.isQieWallet || window.ethereum.isMetaMask === false) {
+      return window.ethereum;
+    }
+  }
+  
+  return null;
+}
+
+export async function connectQieWallet() {
+  if (typeof window === "undefined") {
+    throw new Error("Window not available");
+  }
+
+  // Cek QIE Wallet
+  const qieProvider = detectQieWallet();
+  const ethereum = window.ethereum;
+
+  if (!qieProvider && !ethereum) {
+    throw new Error("QIE Wallet not detected. Please install QIE Wallet extension.");
+  }
+
+  const provider = qieProvider || ethereum;
+
+  try {
+    const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
+    const address = accounts[0];
+
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: NETWORK.chainIdHex }],
+      });
+    } catch (err: any) {
+      if (err?.code === 4902) {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: NETWORK.chainIdHex,
+            chainName: NETWORK.name,
+            nativeCurrency: { name: NETWORK.coin, symbol: NETWORK.symbol, decimals: 18 },
+            rpcUrls: [NETWORK.evmRpc],
+            blockExplorerUrls: ["https://qie.explorer.onenov.xyz"],
+          }],
+        });
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: NETWORK.chainIdHex }],
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    const chainIdHex: string = await provider.request({ method: "eth_chainId" });
+    const balHex: string = await provider.request({ method: "eth_getBalance", params: [address, "latest"] });
+    const balance = (Number(BigInt(balHex)) / 1e18).toFixed(4);
+
+    useWallet.getState().setEvm({ address, chainId: parseInt(chainIdHex, 16), balance });
+
+    provider.on?.("accountsChanged", (acs: string[]) => {
+      if (!acs[0]) {
+        useWallet.getState().disconnectEvm();
+      } else {
+        provider.request({ method: "eth_getBalance", params: [acs[0], "latest"] }).then((b: string) => {
+          useWallet.getState().setEvm({
+            address: acs[0],
+            chainId: useWallet.getState().evm.chainId,
+            balance: (Number(BigInt(b)) / 1e18).toFixed(4),
+          });
+        });
+      }
+    });
+
+    provider.on?.("chainChanged", (cid: string) => {
+      useWallet.getState().setEvm({
+        ...useWallet.getState().evm,
+        chainId: parseInt(cid, 16),
+      });
+    });
+
+    return { address, chainId: parseInt(chainIdHex, 16), balance };
+
+  } catch (error: any) {
+    console.error("Failed to connect QIE Wallet:", error);
+    if (error.code === 4001) {
+      throw new Error("User rejected connection request.");
+    }
+    throw error;
+  }
+}
+
 export async function connectMetaMask() {
   if (typeof window === "undefined" || !window.ethereum) {
     throw new Error("No EVM wallet detected. Please install MetaMask or QIE Wallet.");
@@ -107,90 +210,6 @@ export async function connectMetaMask() {
 
   } catch (error: any) {
     console.error("Failed to connect MetaMask:", error);
-    if (error.code === 4001) {
-      throw new Error("User rejected connection request.");
-    }
-    throw error;
-  }
-}
-
-export async function connectQieWallet() {
-  if (typeof window === "undefined") {
-    throw new Error("Window not available");
-  }
-
-  // Cek apakah QIE Wallet terdeteksi (biasanya via window.qie atau window.ethereum)
-  const qieWallet = (window as any).qie;
-  const ethereum = (window as any).ethereum;
-
-  if (!qieWallet && !ethereum) {
-    throw new Error("QIE Wallet not detected. Please install QIE Wallet extension.");
-  }
-
-  // Gunakan qie API jika ada, fallback ke ethereum
-  const provider = qieWallet || ethereum;
-
-  try {
-    const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
-    const address = accounts[0];
-
-    try {
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: NETWORK.chainIdHex }],
-      });
-    } catch (err: any) {
-      if (err?.code === 4902) {
-        await provider.request({
-          method: "wallet_addEthereumChain",
-          params: [{
-            chainId: NETWORK.chainIdHex,
-            chainName: NETWORK.name,
-            nativeCurrency: { name: NETWORK.coin, symbol: NETWORK.symbol, decimals: 18 },
-            rpcUrls: [NETWORK.evmRpc],
-            blockExplorerUrls: ["https://qie.explorer.onenov.xyz"],
-          }],
-        });
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: NETWORK.chainIdHex }],
-        });
-      } else {
-        throw err;
-      }
-    }
-
-    const chainIdHex: string = await provider.request({ method: "eth_chainId" });
-    const balHex: string = await provider.request({ method: "eth_getBalance", params: [address, "latest"] });
-    const balance = (Number(BigInt(balHex)) / 1e18).toFixed(4);
-
-    useWallet.getState().setEvm({ address, chainId: parseInt(chainIdHex, 16), balance });
-
-    provider.on?.("accountsChanged", (acs: string[]) => {
-      if (!acs[0]) {
-        useWallet.getState().disconnectEvm();
-      } else {
-        provider.request({ method: "eth_getBalance", params: [acs[0], "latest"] }).then((b: string) => {
-          useWallet.getState().setEvm({
-            address: acs[0],
-            chainId: useWallet.getState().evm.chainId,
-            balance: (Number(BigInt(b)) / 1e18).toFixed(4),
-          });
-        });
-      }
-    });
-
-    provider.on?.("chainChanged", (cid: string) => {
-      useWallet.getState().setEvm({
-        ...useWallet.getState().evm,
-        chainId: parseInt(cid, 16),
-      });
-    });
-
-    return { address, chainId: parseInt(chainIdHex, 16), balance };
-
-  } catch (error: any) {
-    console.error("Failed to connect QIE Wallet:", error);
     if (error.code === 4001) {
       throw new Error("User rejected connection request.");
     }
