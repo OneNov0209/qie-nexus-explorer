@@ -29,6 +29,10 @@ function SwapPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
+  const isWrapPair = 
+    (tokenIn.isNative && tokenOut.address === WQIE_ADDRESS) ||
+    (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative);
+
   const connectWallet = async () => {
     setIsConnecting(true);
     try {
@@ -61,7 +65,12 @@ function SwapPage() {
 
   const { data: pairData, isLoading: isPriceLoading } = useQuery({
     queryKey: ["pair-price", tokenIn.address, tokenOut.address],
-    queryFn: () => getPairPrice(tokenIn.address, tokenOut.address),
+    queryFn: () => {
+      if (isWrapPair) {
+        return { isWrap: true, token0Price: "1", token1Price: "1" };
+      }
+      return getPairPrice(tokenIn.address, tokenOut.address);
+    },
     refetchInterval: 10000,
     enabled: !!tokenIn.address && !!tokenOut.address,
   });
@@ -73,7 +82,18 @@ function SwapPage() {
   }, [address, tokenIn, tokenOut]);
 
   useEffect(() => {
-    if (!amountIn || Number(amountIn) <= 0 || !pairData) {
+    if (!amountIn || Number(amountIn) <= 0) {
+      setAmountOut("");
+      return;
+    }
+
+    // Wrap/Unwrap: 1:1
+    if (isWrapPair) {
+      setAmountOut(amountIn);
+      return;
+    }
+
+    if (!pairData || pairData.isWrap) {
       setAmountOut("");
       return;
     }
@@ -84,7 +104,7 @@ function SwapPage() {
     
     const result = Number(amountIn) * price;
     setAmountOut(result.toString());
-  }, [amountIn, pairData, tokenIn]);
+  }, [amountIn, pairData, tokenIn, isWrapPair]);
 
   function handleSwapTokens() {
     setTokenIn(tokenOut);
@@ -143,10 +163,6 @@ function SwapPage() {
         await wrapQIE(amountIn);
         toast.success("QIE wrapped to wQIE! Proceeding to swap...");
         
-        // Update tokenIn to wQIE for swap
-        const wqieToken = TOKENS.find(t => t.address === WQIE_ADDRESS);
-        if (!wqieToken) throw new Error("wQIE token not found");
-        
         const { executeSwap: swapAfterWrap } = await import("@/lib/evm-contracts");
         const result = await swapAfterWrap(amountIn, WQIE_ADDRESS, tokenOut.address, slippage);
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
@@ -161,7 +177,6 @@ function SwapPage() {
       if (!tokenIn.isNative && tokenOut.isNative && tokenIn.address !== WQIE_ADDRESS) {
         toast.info("Swapping to wQIE first...");
         
-        // Check allowance
         const allowance = await getAllowance(address, tokenIn.address);
         if (Number(allowance) < Number(amountIn)) {
           toast.info("Approving token...");
@@ -169,7 +184,6 @@ function SwapPage() {
           toast.success("Token approved!");
         }
         
-        // Swap to wQIE first
         const { executeSwap: swapToWQIE } = await import("@/lib/evm-contracts");
         const result = await swapToWQIE(amountIn, tokenIn.address, WQIE_ADDRESS, slippage);
         
@@ -201,7 +215,6 @@ function SwapPage() {
         return;
       }
 
-      // Fallback: should never reach here
       toast.error("Unsupported swap pair");
 
     } catch (error: any) {
@@ -232,6 +245,9 @@ function SwapPage() {
       </div>
     );
   }
+
+  const isWrapOrUnwrap = isWrapPair;
+  const isPairNotFound = pairData === null && !isWrapOrUnwrap && amountIn && Number(amountIn) > 0;
 
   return (
     <div className="max-w-md mx-auto py-8">
@@ -341,7 +357,18 @@ function SwapPage() {
             </div>
           </div>
 
-          {amountIn && Number(amountIn) > 0 && amountOut && !isPriceLoading && (
+          {isWrapOrUnwrap && amountIn && Number(amountIn) > 0 && (
+            <div className="mt-4 p-3 rounded-xl bg-violet-500/10 border border-violet-500/30">
+              <div className="text-center text-sm">
+                <span className="text-violet-400 font-medium">1:1 Wrap/Unwrap</span>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {tokenIn.isNative ? "QIE → wQIE (Wrap)" : "wQIE → QIE (Unwrap)"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!isWrapOrUnwrap && amountIn && Number(amountIn) > 0 && amountOut && !isPriceLoading && (
             <div className="mt-4 p-3 rounded-xl bg-muted/30 border border-border/60">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Rate</span>
@@ -362,7 +389,7 @@ function SwapPage() {
             </div>
           )}
 
-          {pairData === null && amountIn && Number(amountIn) > 0 && (
+          {isPairNotFound && (
             <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400" />
               <span className="text-xs text-amber-400">Pair not found on QIEDEX</span>
@@ -371,7 +398,7 @@ function SwapPage() {
 
           <button
             onClick={handleSwap}
-            disabled={isLoading || !amountIn || Number(amountIn) <= 0 || !pairData || Number(amountIn) > Number(balanceIn)}
+            disabled={isLoading || !amountIn || Number(amountIn) <= 0 || (isPairNotFound && !isWrapOrUnwrap) || Number(amountIn) > Number(balanceIn)}
             className="w-full mt-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl py-3 font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
@@ -379,13 +406,15 @@ function SwapPage() {
               ? "Processing..." 
               : Number(amountIn) > Number(balanceIn)
                 ? "Insufficient balance"
-                : !pairData && amountIn 
-                  ? "Pair not available" 
-                  : `Swap ${tokenIn.symbol} → ${tokenOut.symbol}`}
+                : isWrapOrUnwrap
+                  ? tokenIn.isNative ? "Wrap QIE → wQIE" : "Unwrap wQIE → QIE"
+                  : isPairNotFound
+                    ? "Pair not available"
+                    : `Swap ${tokenIn.symbol} → ${tokenOut.symbol}`}
           </button>
 
           <div className="mt-3 text-center text-[10px] text-muted-foreground">
-            ⚠️ Auto-wrap/unwrap supported for QIE ↔ wQIE
+            Auto-wrap/unwrap supported for QIE ↔ wQIE
           </div>
         </Card>
       </motion.div>
