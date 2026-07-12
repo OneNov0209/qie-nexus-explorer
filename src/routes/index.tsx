@@ -5,7 +5,9 @@ import {
   ArrowRight, Zap, Globe, 
   GitBranch, ExternalLink, Sparkles,
   ChevronRight, Database, Mail, TrendingUp,
-  BarChart3, PieChart, Clock, Radio, Sun, Moon
+  BarChart3, PieChart, Clock, Radio, Sun, Moon,
+  Wallet, FileCode2, RefreshCw, Settings2, Network as NetworkIcon,
+  Award, Gauge, ArrowRightLeft, CheckCircle
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
@@ -133,6 +135,26 @@ function HomePage() {
     { icon: <Activity className="w-6 h-6" />, title: "Network Health", desc: "Real-time consensus state and network parameters" },
   ];
 
+  const ecosystemFeatures = [
+    { icon: <Wallet className="w-5 h-5" />, title: "QIE Wallet", desc: "Secure Web3 wallet for QIE ecosystem", href: "https://qiewallet.me/" },
+    { icon: <ArrowRightLeft className="w-5 h-5" />, title: "QIEDEX", desc: "Decentralized exchange for QIE tokens", href: "https://www.dex.qie.digital/" },
+    { icon: <Shield className="w-5 h-5" />, title: "QIE Pass", desc: "Reusable Web3 identity & KYC", href: "https://qiepass.qie.digital/" },
+    { icon: <GitBranch className="w-5 h-5" />, title: "QIE Bridge", desc: "Cross-chain bridge to Ethereum & BNB", href: "https://bridge.qie.digital/" },
+    { icon: <Coins className="w-5 h-5" />, title: "QUSDC Stablecoin", desc: "Stablecoin for QIE ecosystem", href: "https://www.stable.qie.digital/" },
+    { icon: <Layers className="w-5 h-5" />, title: "QIElend", desc: "Lending & borrowing protocols", href: "https://www.qielend.qie.digital/" },
+  ];
+
+  const quickLinks = [
+    { label: "Dashboard", icon: <Activity className="w-4 h-4" />, href: "/dashboard" },
+    { label: "Blocks", icon: <Boxes className="w-4 h-4" />, href: "/blocks" },
+    { label: "Transactions", icon: <FileCode2 className="w-4 h-4" />, href: "/transactions" },
+    { label: "Staking", icon: <Layers className="w-4 h-4" />, href: "/staking" },
+    { label: "Governance", icon: <Shield className="w-4 h-4" />, href: "/governance" },
+    { label: "Uptime", icon: <Gauge className="w-4 h-4" />, href: "/uptime" },
+    { label: "Swap", icon: <ArrowRightLeft className="w-4 h-4" />, href: "/swap" },
+    { label: "IBC", icon: <NetworkIcon className="w-4 h-4" />, href: "/ibc" },
+  ];
+
   const stats_cards = [
     { label: "QIE Price", value: price?.usd ? `$${price.usd.toFixed(4)}` : "—", sub: price?.usd_24h_change ? `${price.usd_24h_change.toFixed(2)}%` : "", positive: price?.usd_24h_change > 0, icon: <TrendingUp className="w-5 h-5 text-white" />, color: "from-amber-500 to-yellow-500", shadow: "shadow-amber-500/20" },
     { label: "Market Cap", value: price?.usd_market_cap ? `$${(price.usd_market_cap / 1e6).toFixed(2)}M` : "—", icon: <BarChart3 className="w-5 h-5 text-white" />, color: "from-cyan-500 to-blue-500", shadow: "shadow-cyan-500/20" },
@@ -198,6 +220,20 @@ function HomePage() {
         </div>
       </section>
 
+      {/* QUICK LINKS */}
+      <section className="relative py-8">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
+            {quickLinks.map((link) => (
+              <Link key={link.label} to={link.href} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm text-xs font-medium text-muted-foreground hover:text-foreground hover:border-violet-500/30 hover:bg-card/60 transition-all duration-300 shadow-sm hover:shadow-md">
+                {link.icon}
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CHARTS */}
       <section className="relative py-16 md:py-20">
         <div className="container mx-auto px-4">
@@ -239,10 +275,35 @@ function HomePage() {
       {/* FEATURES */}
       <section className="relative py-16 md:py-24"><div className="container mx-auto px-4"><div className="text-center mb-12"><h2 className="text-3xl md:text-4xl font-bold mb-4"><span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Everything You Need</span></h2><p className="text-muted-foreground max-w-xl mx-auto">A complete blockchain explorer with powerful tools for developers, validators, and delegators.</p></div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">{features.map((f, i) => (<motion.div key={f.title} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: i * 0.1 }} viewport={{ once: true }} className="group relative rounded-2xl border-2 border-border/40 bg-card/40 backdrop-blur-sm p-6 hover:border-violet-500/20 hover:shadow-xl hover:shadow-violet-500/5 transition-all duration-300 shadow-lg"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 grid place-items-center mb-4 text-violet-400 group-hover:scale-110 transition-transform border border-violet-500/20 shadow-md">{f.icon}</div><h3 className="font-bold text-lg mb-2">{f.title}</h3><p className="text-sm text-muted-foreground">{f.desc}</p></motion.div>))}</div></div></section>
 
+      {/* ECOSYSTEM */}
+      <section className="relative py-16 md:py-20 bg-muted/20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4"><span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">QIE Ecosystem</span></h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">Explore the growing ecosystem of applications and services built on QIE</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto">
+            {ecosystemFeatures.map((item) => (
+              <a
+                key={item.title}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className="group rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4 text-center hover:border-violet-500/30 hover:bg-card/60 transition-all duration-300 shadow-sm hover:shadow-md hover:scale-105"
+              >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20 grid place-items-center mx-auto mb-2 text-violet-400 group-hover:scale-110 transition-transform">{item.icon}</div>
+                <div className="text-xs font-medium">{item.title}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{item.desc}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="relative py-16 md:py-24"><div className="container mx-auto px-4"><div className="relative rounded-3xl overflow-hidden border-2 border-violet-500/20 shadow-2xl shadow-violet-500/10"><div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 via-fuchsia-500/10 to-cyan-500/10" /><div className="absolute top-0 right-0 w-[400px] h-[400px] bg-gradient-to-bl from-violet-500/20 to-transparent rounded-full blur-3xl" /><div className="relative p-8 md:p-12 text-center"><Sparkles className="w-12 h-12 text-violet-400 mx-auto mb-4" /><h2 className="text-2xl md:text-4xl font-bold mb-4">Ready to <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Explore QIE?</span></h2><p className="text-muted-foreground max-w-lg mx-auto mb-8">Dive into the QIE blockchain. Monitor blocks, track transactions, stake with validators, and shape the future of the network.</p><Link to="/dashboard" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-lg shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-105 transition-all duration-300 border-b-4 border-violet-700/50 active:border-b-0 active:translate-y-1"><Zap className="w-5 h-5" />View Explorer<ChevronRight className="w-5 h-5" /></Link></div></div></div></section>
 
-      {/* FOOTER - DIPERBAIKI: Menghapus hackathon */}
+      {/* FOOTER */}
       <footer className="mt-auto border-t-2 border-border/60 bg-background/40 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-5 gap-8">
           <div className="col-span-2 md:col-span-1">
