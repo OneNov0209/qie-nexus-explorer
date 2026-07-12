@@ -57,11 +57,15 @@ export const formatWei = (hex?: string, decimals = 6) => {
   return v.toLocaleString(undefined, { maximumFractionDigits: decimals });
 };
 
-export const formatQIE = (amount: string | number | undefined, decimals = 4) => {
+export const formatQIE = (
+  amount: string | number | undefined, 
+  decimals: number = 4, 
+  tokenDecimals: number = NETWORK.decimals
+) => {
   if (amount === undefined || amount === null) return "0";
   const n = typeof amount === "string" ? Number(amount) : amount;
   if (!isFinite(n)) return "0";
-  const v = n / 10 ** NETWORK.decimals;
+  const v = n / 10 ** tokenDecimals;
   return v.toLocaleString(undefined, { maximumFractionDigits: decimals });
 };
 
@@ -94,7 +98,10 @@ export const cosmos = {
     rest.get("/cosmos/gov/v1beta1/proposals", { params: { "pagination.limit": 50, "pagination.reverse": true } }).then((r: any) => r.data),
   txsByHeight: (height: number) =>
     rest.get("/cosmos/tx/v1beta1/txs", { params: { events: `tx.height=${height}` } }).then((r: any) => r.data),
-  txByHash: (hash: string) => rest.get(`/cosmos/tx/v1beta1/txs/${hash}`).then((r: any) => r.data),
+  txByHash: (hash: string) => {
+    const cleanHash = hash.startsWith('0x') ? hash.slice(2) : hash;
+    return rest.get(`/cosmos/tx/v1beta1/txs/${cleanHash}`).then((r: any) => r.data);
+  },
   ibcChannels: () => rest.get("/ibc/core/channel/v1/channels").then((r: any) => r.data),
   ibcConnections: () => rest.get("/ibc/core/connection/v1/connections").then((r: any) => r.data),
   ibcClients: () => rest.get("/ibc/core/client/v1/client_states").then((r: any) => r.data),
