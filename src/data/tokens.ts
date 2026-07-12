@@ -9,6 +9,11 @@ export interface Token {
 
 export const DEX_SUBGRAPH = "https://graphql.qie.digital/subgraphs/name/qie-dex/dex";
 
+// 🔥 KONTRAK RESMI QIEDEX
+export const DEX_ROUTER = "0x08cd2e72e156D8563B4351eb4065C262A9f553Ef";
+export const DEX_FACTORY = "0x8E23128a5511223bE6c0d64106e2D4508C08398C";
+export const WQIE_ADDRESS = "0x0087904D95BEe9E5F24dc8852804b547981A9139";
+
 export const TOKENS: Token[] = [
   {
     address: "0x0000000000000000000000000000000000000000",
@@ -33,7 +38,7 @@ export const TOKENS: Token[] = [
     logo: "https://cryptologos.cc/logos/tether-usdt-logo.png",
   },
   {
-    address: "0x0087904D95BEe9E5F24dc8852804b547981A9139",
+    address: WQIE_ADDRESS,
     symbol: "wQIE",
     name: "Wrapped QIE",
     decimals: 18,
