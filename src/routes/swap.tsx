@@ -113,8 +113,20 @@ function SwapPage() {
 
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      toast.success("Swap simulated! (Router address needed for real swap)");
+      // Cek allowance untuk token non-native
+      if (!tokenIn.isNative) {
+        const { getAllowance, approveToken } = await import("@/lib/evm-contracts");
+        const allowance = await getAllowance(address, tokenIn.address);
+        if (Number(allowance) < Number(amountIn)) {
+          toast.info("Approving token...");
+          await approveToken(tokenIn.address, amountIn);
+          toast.success("Token approved!");
+        }
+      }
+
+      const { executeSwap } = await import("@/lib/evm-contracts");
+      const result = await executeSwap(amountIn, tokenIn.address, tokenOut.address, slippage);
+      toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
       setAmountIn("");
       setAmountOut("");
       await fetchBalances();
