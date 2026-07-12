@@ -71,9 +71,9 @@ export function Topbar() {
         } catch {}
       }
 
-      // TX hash
+      // TX hash - tetap pertahankan 0x
       if (/^0x[0-9a-fA-F]{64}$/.test(v) || /^[0-9A-Fa-f]{64}$/.test(v)) {
-        const hash = v.replace(/^0x/, "");
+        const hash = v.startsWith('0x') ? v : `0x${v}`;
         out.push({ kind: "tx", label: `Tx ${shorten(hash, 10, 8)}`, sub: "Transaction", to: { path: "/tx/$hash", param: hash } });
       }
 
@@ -138,8 +138,11 @@ export function Topbar() {
     if (!v) return;
     setBusy(true);
     if (/^\d+$/.test(v)) navigate({ to: "/blocks/$height", params: { height: v } });
-    else if (/^0x[0-9a-fA-F]{64}$/.test(v) || /^[0-9A-Fa-f]{64}$/.test(v))
-      navigate({ to: "/tx/$hash", params: { hash: v.replace(/^0x/, "") } });
+    else if (/^0x[0-9a-fA-F]{64}$/.test(v) || /^[0-9A-Fa-f]{64}$/.test(v)) {
+      // ✅ Pertahankan 0x jika ada, tambahkan jika tidak
+      const hash = v.startsWith('0x') ? v : `0x${v}`;
+      navigate({ to: "/tx/$hash", params: { hash } });
+    }
     else if (v.startsWith("qievaloper"))
       navigate({ to: "/staking/$validator", params: { validator: v } });
     else if (v.startsWith("qie") || /^0x[0-9a-fA-F]{40}$/.test(v))
