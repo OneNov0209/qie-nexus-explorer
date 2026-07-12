@@ -1,18 +1,30 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWallet } from "@/lib/wallet";
 import { TOKENS, Token, WQIE_ADDRESS } from "@/data/tokens";
 import { getPairPrice } from "@/lib/subgraph";
 import { Card, SectionTitle } from "@/components/ui/primitives";
-import { ChevronDown, ArrowUpDown, Loader2, Settings, AlertCircle } from "lucide-react";
+import { ChevronDown, ArrowUpDown, Loader2, Settings, AlertCircle, History, ExternalLink, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import dayjs from "dayjs";
 
 export const Route = createFileRoute("/swap")({
   head: () => ({ meta: [{ title: "Swap — QIE Explorer" }] }),
   component: SwapPage,
 });
+
+interface SwapHistoryItem {
+  hash: string;
+  type: "swap" | "wrap" | "unwrap";
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  toAmount: string;
+  timestamp: number;
+  status: "success" | "failed";
+}
 
 function SwapPage() {
   const isConnected = useWallet((state) => !!state.evm.address);
@@ -28,10 +40,32 @@ function SwapPage() {
   const [slippage, setSlippage] = useState(0.5);
   const [showSettings, setShowSettings] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [history, setHistory] = useState<SwapHistoryItem[]>([]);
 
   const isWrapPair = 
     (tokenIn.isNative && tokenOut.address === WQIE_ADDRESS) ||
     (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative);
+
+  // Load history from localStorage
+  useEffect(() => {
+    if (address) {
+      const saved = localStorage.getItem(`swap-history-${address}`);
+      if (saved) {
+        try {
+          setHistory(JSON.parse(saved));
+        } catch {}
+      }
+    }
+  }, [address]);
+
+  // Save history to localStorage
+  const saveHistory = (item: SwapHistoryItem) => {
+    const newHistory = [item, ...history].slice(0, 20);
+    setHistory(newHistory);
+    if (address) {
+      localStorage.setItem(`swap-history-${address}`, JSON.stringify(newHistory));
+    }
+  };
 
   const connectWallet = async () => {
     setIsConnecting(true);
@@ -133,47 +167,43 @@ function SwapPage() {
     setIsLoading(true);
     try {
       const { executeSwap, wrapQIE, unwrapQIE, getAllowance, approveToken } = await import("@/lib/evm-contracts");
+      let resultHash = "";
+      let txType: "swap" | "wrap" | "unwrap" = "swap";
+      let fromToken = tokenIn.symbol;
+      let toToken = tokenOut.symbol;
+      let fromAmount = amountIn;
+      let toAmount = amountOut || "0";
 
       // Case 1: QIE → wQIE (Wrap)
       if (tokenIn.isNative && tokenOut.address === WQIE_ADDRESS) {
-        await wrapQIE(amountIn);
+        const result = await wrapQIE(amountIn);
+        resultHash = result.hash;
+        txType = "wrap";
+        toAmount = amountIn;
         toast.success("QIE wrapped to wQIE!");
-        setAmountIn("");
-        setAmountOut("");
-        await fetchBalances();
-        setIsLoading(false);
-        return;
       }
-
       // Case 2: wQIE → QIE (Unwrap)
-      if (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative) {
-        await unwrapQIE(amountIn);
+      else if (tokenIn.address === WQIE_ADDRESS && tokenOut.isNative) {
+        const result = await unwrapQIE(amountIn);
+        resultHash = result.hash;
+        txType = "unwrap";
+        toAmount = amountIn;
         toast.success("wQIE unwrapped to QIE!");
-        setAmountIn("");
-        setAmountOut("");
-        await fetchBalances();
-        setIsLoading(false);
-        return;
       }
-
       // Case 3: Native QIE → Other token (Auto-wrap + Swap)
-      if (tokenIn.isNative && !tokenOut.isNative && tokenOut.address !== WQIE_ADDRESS) {
+      else if (tokenIn.isNative && !tokenOut.isNative && tokenOut.address !== WQIE_ADDRESS) {
         toast.info("Wrapping QIE to wQIE first...");
         await wrapQIE(amountIn);
         toast.success("QIE wrapped to wQIE! Proceeding to swap...");
         
         const { executeSwap: swapAfterWrap } = await import("@/lib/evm-contracts");
         const result = await swapAfterWrap(amountIn, WQIE_ADDRESS, tokenOut.address, slippage);
+        resultHash = result.hash;
+        txType = "swap";
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
-        setAmountIn("");
-        setAmountOut("");
-        await fetchBalances();
-        setIsLoading(false);
-        return;
       }
-
       // Case 4: Other token → Native QIE (Swap + Auto-unwrap)
-      if (!tokenIn.isNative && tokenOut.isNative && tokenIn.address !== WQIE_ADDRESS) {
+      else if (!tokenIn.isNative && tokenOut.isNative && tokenIn.address !== WQIE_ADDRESS) {
         toast.info("Swapping to wQIE first...");
         
         const allowance = await getAllowance(address, tokenIn.address);
@@ -188,16 +218,12 @@ function SwapPage() {
         
         toast.info("Unwrapping wQIE to QIE...");
         await unwrapQIE(amountIn);
+        resultHash = result.hash;
+        txType = "swap";
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
-        setAmountIn("");
-        setAmountOut("");
-        await fetchBalances();
-        setIsLoading(false);
-        return;
       }
-
       // Case 5: Regular token-to-token swap (including wQIE)
-      if (!tokenIn.isNative && !tokenOut.isNative) {
+      else if (!tokenIn.isNative && !tokenOut.isNative) {
         const allowance = await getAllowance(address, tokenIn.address);
         if (Number(allowance) < Number(amountIn)) {
           toast.info("Approving token...");
@@ -206,18 +232,44 @@ function SwapPage() {
         }
 
         const result = await executeSwap(amountIn, tokenIn.address, tokenOut.address, slippage);
+        resultHash = result.hash;
+        txType = "swap";
         toast.success("Swap successful!", { description: `Tx: ${result.hash.slice(0, 16)}...` });
-        setAmountIn("");
-        setAmountOut("");
-        await fetchBalances();
-        setIsLoading(false);
-        return;
       }
 
-      toast.error("Unsupported swap pair");
+      // Save to history
+      if (resultHash) {
+        saveHistory({
+          hash: resultHash,
+          type: txType,
+          fromToken,
+          toToken,
+          fromAmount,
+          toAmount,
+          timestamp: Date.now(),
+          status: "success",
+        });
+      }
+
+      setAmountIn("");
+      setAmountOut("");
+      await fetchBalances();
 
     } catch (error: any) {
       toast.error("Swap failed", { description: error.message });
+      // Save failed transaction
+      if (error?.transactionHash) {
+        saveHistory({
+          hash: error.transactionHash,
+          type: "swap",
+          fromToken: tokenIn.symbol,
+          toToken: tokenOut.symbol,
+          fromAmount: amountIn,
+          toAmount: "0",
+          timestamp: Date.now(),
+          status: "failed",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -249,7 +301,7 @@ function SwapPage() {
   const isPairNotFound = pairData === null && !isWrapOrUnwrap && amountIn && Number(amountIn) > 0;
 
   return (
-    <div className="max-w-md mx-auto py-8">
+    <div className="max-w-md mx-auto py-8 space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -417,6 +469,77 @@ function SwapPage() {
           </div>
         </Card>
       </motion.div>
+
+      {/* Swap History */}
+      {history.length > 0 && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold">Transaction History</h3>
+                <span className="text-[10px] text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-full">
+                  {history.length}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setHistory([]);
+                  if (address) {
+                    localStorage.removeItem(`swap-history-${address}`);
+                  }
+                }}
+                className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {history.map((item, idx) => (
+                <Link
+                  key={idx}
+                  to="/tx/$hash"
+                  params={{ hash: item.hash }}
+                  className="block p-3 rounded-xl bg-muted/20 hover:bg-muted/40 transition-colors border border-border/30"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {item.status === "success" ? (
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        )}
+                        <span className="text-xs font-medium truncate">
+                          {item.type === "wrap" ? "Wrap" : item.type === "unwrap" ? "Unwrap" : "Swap"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {item.fromToken} → {item.toToken}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] text-muted-foreground">
+                          {Number(item.fromAmount).toFixed(4)} {item.fromToken} → {Number(item.toAmount).toFixed(4)} {item.toToken}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                        {dayjs(item.timestamp).format("MMM DD, HH:mm:ss")}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {item.hash.slice(0, 8)}...{item.hash.slice(-6)}
+                      </span>
+                      <ExternalLink className="w-3 h-3 text-muted-foreground/50" />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        </motion.div>
+      )}
     </div>
   );
 }
