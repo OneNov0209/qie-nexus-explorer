@@ -145,9 +145,16 @@ export async function executeSwap(
   const decimalsOut = getTokenDecimals(tokenOut);
   const amount = ethers.parseUnits(amountIn, decimalsIn);
   
-  const quote = await getQuote(amountIn, tokenIn, tokenOut);
+  // 🔥 Dapatkan quote dan format dengan desimal yang benar
+  const quoteStr = await getQuote(amountIn, tokenIn, tokenOut);
+  const quoteNum = parseFloat(quoteStr);
+  
+  if (isNaN(quoteNum) || quoteNum <= 0) {
+    throw new Error("Invalid quote received");
+  }
+  
   const amountOutMin = ethers.parseUnits(
-    (Number(quote) * (1 - slippage / 100)).toString(),
+    (quoteNum * (1 - slippage / 100)).toFixed(decimalsOut),
     decimalsOut
   );
   
