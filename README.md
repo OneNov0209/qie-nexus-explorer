@@ -296,7 +296,7 @@ src/
 |----------|---------|-------------|
 | **QIEDEX Router** | `0x08cd2e72e156D8563B4351eb4065C262A9f553Ef` | DEX routing for swaps |
 | **QIEDEX Factory** | `0x8E23128a5511223bE6c0d64106e2D4508C08398C` | Pair creation |
-| **wQIE** | `0x0087904D95BEe9E5F24dc8852804b547981A9139` | Wrapped QIE token |
+| **wQIE** | `0xAC8d365ECc9074a679f75B3E6b2bbF303e466728` | Wrapped QIE token |
 | **wUSDC** | `0x0e93FAcc0a2cfD418403f3AD3EEfB5C8b2dfAec7` | Wrapped USDC |
 | **wUSDT** | `0xCB7bBC584475dce754a918ccD92FF6E0211f3CEE` | Wrapped USDT |
 | **QIDEX** | `0xA795c4D885522d5e37956265837636b023445871` | QIDEX governance token |
