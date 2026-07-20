@@ -37,24 +37,25 @@ async function fetchValidatorAddresses(operatorAddr: string) {
 
 function ValidatorDetail() {
   const { validator } = Route.useParams();
+  const cleanValidator = validator.replace(/\.$/, '');
   const { cosmos: cw } = useWallet();
   const qc = useQueryClient();
   const [stakingModalOpen, setStakingModalOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["validator-detail", validator],
+    queryKey: ["validator-detail", cleanValidator],
     refetchInterval: 15_000,
     queryFn: async () => {
       const [v, pool, vals, signingInfo, validatorSet, addresses, delegationsRes, distCommission, outstandingRewardsData] = await Promise.all([
-        cosmos.validatorByAddr(validator).catch(() => null),
+        cosmos.validatorByAddr(cleanValidator).catch(() => null),
         cosmos.stakingPool(),
         cosmos.validators(),
         cosmos.signingInfos().catch(() => ({ info: [] })),
         fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/validatorsets/latest`).then(r => r.json()).catch(() => ({ validators: [] })),
-        fetchValidatorAddresses(validator),
-        fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${validator}/delegations?pagination.limit=50`).then(r => r.json()).catch(() => ({ delegation_responses: [] })),
-        fetch(`${NETWORK.rest}/cosmos/distribution/v1beta1/validators/${validator}/commission`).then(r => r.json()).catch(() => ({ commission: { amount: [] } })),
-        fetch(`${NETWORK.rest}/cosmos/distribution/v1beta1/validators/${validator}/outstanding_rewards`).then(r => r.json()).catch(() => ({ rewards: [] })),
+        fetchValidatorAddresses(cleanValidator),
+        fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${cleanValidator}/delegations?pagination.limit=50`).then(r => r.json()).catch(() => ({ delegation_responses: [] })),
+        fetch(`${NETWORK.rest}/cosmos/distribution/v1beta1/validators/${cleanValidator}/commission`).then(r => r.json()).catch(() => ({ commission: { amount: [] } })),
+        fetch(`${NETWORK.rest}/cosmos/distribution/v1beta1/validators/${cleanValidator}/outstanding_rewards`).then(r => r.json()).catch(() => ({ rewards: [] })),
       ]);
 
       const delegations = delegationsRes?.delegation_responses ?? [];
@@ -68,7 +69,7 @@ function ValidatorDetail() {
       const minSelfDelegation = v?.min_self_delegation ?? "0";
       const unbondingHeight = v?.unbonding_height ?? "0";
       const unbondingTime = v?.unbonding_time;
-      const operatorAddr = v?.operator_address ?? validator;
+      const operatorAddr = v?.operator_address ?? cleanValidator;
       const consensusPubkeyBase64 = v?.consensus_pubkey?.key ?? "";
 
       const vsValidator = (validatorSet?.validators ?? []).find((sv: any) => sv.pub_key?.key === consensusPubkeyBase64);
@@ -85,17 +86,23 @@ function ValidatorDetail() {
       }
       const selfDelegationPct = totalTokens > 0 ? (selfDelegationAmount / totalTokens) * 100 : 0;
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
-      
-      const commissionPool = Number(distCommission?.commission?.amount?.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
 
-      // 🔥 Perbaiki ambil outstanding rewards - handle array atau object
+      // 🔥 Parsing commission
+      let commissionPool = 0;
+      if (distCommission?.commission?.commission) {
+        const commData = Array.isArray(distCommission.commission.commission) 
+          ? distCommission.commission.commission 
+          : [distCommission.commission.commission];
+        commissionPool = Number(commData.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
+      }
+
+      // 🔥 Parsing outstanding rewards
       let outstandingRewards = 0;
-      if (outstandingRewardsData?.rewards) {
-        if (Array.isArray(outstandingRewardsData.rewards)) {
-          outstandingRewards = Number(outstandingRewardsData.rewards.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
-        } else {
-          outstandingRewards = Number(outstandingRewardsData.rewards[NETWORK.denom] || 0);
-        }
+      if (outstandingRewardsData?.rewards?.rewards) {
+        const rewardsData = Array.isArray(outstandingRewardsData.rewards.rewards) 
+          ? outstandingRewardsData.rewards.rewards 
+          : [outstandingRewardsData.rewards.rewards];
+        outstandingRewards = Number(rewardsData.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
       }
 
       return {
@@ -109,7 +116,7 @@ function ValidatorDetail() {
   });
 
   const { data: userData } = useQuery({
-    queryKey: ["user-staking-validator", cw.address, validator],
+    queryKey: ["user-staking-validator", cw.address, cleanValidator],
     enabled: !!cw.address,
     refetchInterval: 20_000,
     queryFn: async () => {
@@ -118,8 +125,8 @@ function ValidatorDetail() {
         cosmos.rewards(cw.address!).catch(() => ({ rewards: [], total: [] })),
         cosmos.balance(cw.address!).catch(() => ({ balances: [] })),
       ]);
-      const myDel = dels?.delegation_responses?.find((d: any) => d.delegation?.validator_address === validator);
-      const myReward = rewards?.rewards?.find((r: any) => r.validator_address === validator);
+      const myDel = dels?.delegation_responses?.find((d: any) => d.delegation?.validator_address === cleanValidator);
+      const myReward = rewards?.rewards?.find((r: any) => r.validator_address === cleanValidator);
       const balanceQ = bal?.balances?.find((b: any) => b.denom === NETWORK.denom)?.amount ?? "0";
       return { myDel, myReward, balanceQ };
     },
@@ -137,7 +144,7 @@ function ValidatorDetail() {
   } = data;
 
   const identity = v?.description?.identity;
-  const moniker = v?.description?.moniker ?? shorten(validator);
+  const moniker = v?.description?.moniker ?? shorten(cleanValidator);
   const isBonded = v?.status === "BOND_STATUS_BONDED";
   const isJailed = v?.jailed;
   const commissionUpdateTime = v?.commission?.update_time;
@@ -147,15 +154,15 @@ function ValidatorDetail() {
   const myRewardQ = userData?.myReward?.reward?.find((c: any) => c.denom === NETWORK.denom)?.amount ?? "0";
   const userBalance = userData?.balanceQ ?? "0";
 
-  const vpPieData = [
+  const vpPieData = totalTokens > 0 ? [
     { name: moniker, value: totalTokens / 1e18 },
     { name: "Others", value: Math.max(0, (bonded - totalTokens) / 1e18) },
-  ];
+  ] : [{ name: "No Data", value: 1 }];
 
-  const selfDelPieData = [
+  const selfDelPieData = totalTokens > 0 ? [
     { name: "Self Delegated", value: selfDelegationAmount / 1e18 },
     { name: "From Delegators", value: Math.max(0, (totalTokens - selfDelegationAmount) / 1e18) },
-  ];
+  ] : [{ name: "No Data", value: 1 }];
 
   const handleAddressClick = (address: string, type: string) => {
     if (!address) return;
@@ -217,13 +224,67 @@ function ValidatorDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <SectionTitle title="Voting Power Composition" />
-          <div className="h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={vpPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value" strokeWidth={0}>{vpPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i]} />))}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>
-          <div className="flex justify-center gap-6 pb-2">{vpPieData.map((d, i) => (<div key={d.name} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i] }} /><span className="text-xs text-muted-foreground">{d.name}</span></div>))}</div>
+          <div className="h-48 min-h-[150px] w-full min-w-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie 
+                  data={vpPieData} 
+                  cx="50%" 
+                  cy="50%" 
+                  innerRadius={50} 
+                  outerRadius={75} 
+                  paddingAngle={4} 
+                  dataKey="value" 
+                  strokeWidth={0}
+                >
+                  {vpPieData.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex justify-center gap-6 pb-2">
+            {vpPieData.map((d, i) => (
+              <div key={d.name} className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                <span className="text-xs text-muted-foreground">{d.name}</span>
+              </div>
+            ))}
+          </div>
         </Card>
         <Card>
           <SectionTitle title="Delegation Distribution" />
-          <div className="h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={selfDelPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value" strokeWidth={0}>{selfDelPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i + 2]} />))}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>
-          <div className="flex justify-center gap-6 pb-2">{selfDelPieData.map((d, i) => (<div key={d.name} className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[i + 2] }} /><span className="text-xs text-muted-foreground">{d.name}</span></div>))}</div>
+          <div className="h-48 min-h-[150px] w-full min-w-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie 
+                  data={selfDelPieData} 
+                  cx="50%" 
+                  cy="50%" 
+                  innerRadius={50} 
+                  outerRadius={75} 
+                  paddingAngle={4} 
+                  dataKey="value" 
+                  strokeWidth={0}
+                >
+                  {selfDelPieData.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[(i + 2) % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex justify-center gap-6 pb-2">
+            {selfDelPieData.map((d, i) => (
+              <div key={d.name} className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm" style={{ background: PIE_COLORS[(i + 2) % PIE_COLORS.length] }} />
+                <span className="text-xs text-muted-foreground">{d.name}</span>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
 
