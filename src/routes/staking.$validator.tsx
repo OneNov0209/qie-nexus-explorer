@@ -86,9 +86,17 @@ function ValidatorDetail() {
       const selfDelegationPct = totalTokens > 0 ? (selfDelegationAmount / totalTokens) * 100 : 0;
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
       
-      // Data real dari API
       const commissionPool = Number(distCommission?.commission?.amount?.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
-      const outstandingRewards = Number(outstandingRewardsData?.rewards?.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
+
+      // 🔥 Perbaiki ambil outstanding rewards - handle array atau object
+      let outstandingRewards = 0;
+      if (outstandingRewardsData?.rewards) {
+        if (Array.isArray(outstandingRewardsData.rewards)) {
+          outstandingRewards = Number(outstandingRewardsData.rewards.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
+        } else {
+          outstandingRewards = Number(outstandingRewardsData.rewards[NETWORK.denom] || 0);
+        }
+      }
 
       return {
         v, vp, comm, maxComm, maxChange, minSelfDelegation,
@@ -219,7 +227,7 @@ function ValidatorDetail() {
         </Card>
       </div>
 
-      {/* Commissions & Rewards - Data Real */}
+      {/* Commissions & Rewards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <InfoCard icon={<Coins className="w-4 h-4 text-amber-400" />} label="Commissions" value={`${formatQIE(commissionPool, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Gift className="w-4 h-4 text-emerald-400" />} label="Outstanding Rewards" value={`${formatQIE(outstandingRewards, 2)} ${NETWORK.symbol}`} />
