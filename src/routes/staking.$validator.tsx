@@ -45,7 +45,7 @@ function ValidatorDetail() {
     queryKey: ["validator-detail", validator],
     refetchInterval: 15_000,
     queryFn: async () => {
-      const [v, pool, vals, signingInfo, validatorSet, addresses, delegationsRes] = await Promise.all([
+      const [v, pool, vals, signingInfo, validatorSet, addresses, delegationsRes, distCommission, outstandingRewardsData] = await Promise.all([
         cosmos.validatorByAddr(validator).catch(() => null),
         cosmos.stakingPool(),
         cosmos.validators(),
@@ -53,6 +53,8 @@ function ValidatorDetail() {
         fetch(`${NETWORK.rest}/cosmos/base/tendermint/v1beta1/validatorsets/latest`).then(r => r.json()).catch(() => ({ validators: [] })),
         fetchValidatorAddresses(validator),
         fetch(`${NETWORK.rest}/cosmos/staking/v1beta1/validators/${validator}/delegations?pagination.limit=50`).then(r => r.json()).catch(() => ({ delegation_responses: [] })),
+        fetch(`${NETWORK.rest}/cosmos/distribution/v1beta1/validators/${validator}/commission`).then(r => r.json()).catch(() => ({ commission: { amount: [] } })),
+        fetch(`${NETWORK.rest}/cosmos/distribution/v1beta1/validators/${validator}/outstanding_rewards`).then(r => r.json()).catch(() => ({ rewards: [] })),
       ]);
 
       const delegations = delegationsRes?.delegation_responses ?? [];
@@ -83,8 +85,10 @@ function ValidatorDetail() {
       }
       const selfDelegationPct = totalTokens > 0 ? (selfDelegationAmount / totalTokens) * 100 : 0;
       const info = signingInfo?.info?.find((s: any) => s.address === consensusPubkeyBase64);
-      const commissionPool = totalTokens * comm;
-      const outstandingRewards = commissionPool * 0.1;
+      
+      // Data real dari API
+      const commissionPool = Number(distCommission?.commission?.amount?.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
+      const outstandingRewards = Number(outstandingRewardsData?.rewards?.find((c: any) => c.denom === NETWORK.denom)?.amount || 0);
 
       return {
         v, vp, comm, maxComm, maxChange, minSelfDelegation,
@@ -145,16 +149,13 @@ function ValidatorDetail() {
     { name: "From Delegators", value: Math.max(0, (totalTokens - selfDelegationAmount) / 1e18) },
   ];
 
-  // Handle click on address row
   const handleAddressClick = (address: string, type: string) => {
     if (!address) return;
-    // Redirect ke halaman yang sesuai
     if (type === "account" || type === "delegator") {
       window.location.href = `/address/${address}`;
     } else if (type === "validator") {
       window.location.href = `/staking/${address}`;
     } else {
-      // Default: cari di explorer
       window.open(`https://qie.explorer.onenov.xyz/account/${address}`, "_blank");
     }
   };
@@ -175,7 +176,6 @@ function ValidatorDetail() {
             </div>
           </div>
         </div>
-        {/* Single Stake Button */}
         {cw.address && (
           <div className="ml-auto">
             <button
@@ -219,7 +219,7 @@ function ValidatorDetail() {
         </Card>
       </div>
 
-      {/* Commissions & Rewards */}
+      {/* Commissions & Rewards - Data Real */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <InfoCard icon={<Coins className="w-4 h-4 text-amber-400" />} label="Commissions" value={`${formatQIE(commissionPool, 2)} ${NETWORK.symbol}`} />
         <InfoCard icon={<Gift className="w-4 h-4 text-emerald-400" />} label="Outstanding Rewards" value={`${formatQIE(outstandingRewards, 2)} ${NETWORK.symbol}`} />
@@ -328,29 +328,29 @@ function ValidatorDetail() {
 
       {/* Staking Modal */}
       <StakingModal
-  open={stakingModalOpen}
-  onClose={() => setStakingModalOpen(false)}
-  validatorAddress={operatorAddr}
-  validatorMoniker={moniker}
-  validatorIdentity={identity}
-  validatorCommission={comm}
-  validatorAPR={vp > 0 ? vp * (1 - comm) : 0}
-  userStake={Number(myStake)}
-  userBalance={Number(userBalance)}
-  userRewards={Number(myRewardQ)}
-  allValidators={allVals
-    .filter((x: any) => x.status === "BOND_STATUS_BONDED")
-    .map((x: any) => ({
-      address: x.operator_address,
-      moniker: x.description?.moniker || shorten(x.operator_address, 10, 6),
-      identity: x.description?.identity,
-    }))
-  }
-  onSuccess={() => {
-    qc.invalidateQueries({ queryKey: ["user-staking-validator"] });
-    qc.invalidateQueries({ queryKey: ["validator-detail"] });
-  }}
-/>
+        open={stakingModalOpen}
+        onClose={() => setStakingModalOpen(false)}
+        validatorAddress={operatorAddr}
+        validatorMoniker={moniker}
+        validatorIdentity={identity}
+        validatorCommission={comm}
+        validatorAPR={vp > 0 ? vp * (1 - comm) : 0}
+        userStake={Number(myStake)}
+        userBalance={Number(userBalance)}
+        userRewards={Number(myRewardQ)}
+        allValidators={allVals
+          .filter((x: any) => x.status === "BOND_STATUS_BONDED")
+          .map((x: any) => ({
+            address: x.operator_address,
+            moniker: x.description?.moniker || shorten(x.operator_address, 10, 6),
+            identity: x.description?.identity,
+          }))
+        }
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["user-staking-validator"] });
+          qc.invalidateQueries({ queryKey: ["validator-detail"] });
+        }}
+      />
     </div>
   );
 }
