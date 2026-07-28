@@ -8,7 +8,7 @@ import { useWallet } from "@/lib/wallet";
 import { voteProposal } from "@/lib/wallet-tx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useState } from "react";
-import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Users, Vote, Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, AlertTriangle, Users, Vote, Calendar, ChevronDown, ChevronUp } from "lucide-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 dayjs.extend(relativeTime);
