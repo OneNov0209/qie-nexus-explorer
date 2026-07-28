@@ -6,7 +6,7 @@ import { Card, SectionTitle, Loading, ErrorState, Pill } from "@/components/ui/p
 import { toast } from "sonner";
 import { useWallet } from "@/lib/wallet";
 import { voteProposal } from "@/lib/wallet-tx";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useState } from "react";
 import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, AlertTriangle, Users, Vote, Calendar, ChevronDown, ChevronUp } from "lucide-react";
 import dayjs from "dayjs";
@@ -278,10 +278,15 @@ function ProposalDetail() {
         </Card>
       )}
 
-      {/* Vote Dialog */}
+      {/* Vote Dialog - DENGAN DialogDescription */}
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
         <DialogContent className="border-border max-w-md">
-          <DialogHeader><DialogTitle>Vote on Proposal #{proposalId}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Vote on Proposal #{proposalId}</DialogTitle>
+            <DialogDescription>
+              Select your vote option for this proposal. Your vote will be recorded on-chain.
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="text-sm font-medium">{title}</div>
             <div className="grid grid-cols-2 gap-2 pt-2">
